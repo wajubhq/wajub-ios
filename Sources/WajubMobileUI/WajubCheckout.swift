@@ -19,10 +19,8 @@ public enum WajubCheckout {
     /// Throws `WajubError` `sheet_already_presented` at once when a sheet is already open. Confirm a
     /// `complete` result server-side before you deliver.
     public static func present(_ options: PresentOptions, from viewController: UIViewController? = nil) async throws -> CheckoutResult {
-        guard let host = viewController ?? topViewController() else {
-            return .cancelled(reason: .hostGone, redirectURL: nil)
-        }
-        let presenter = SheetPresenter(host: host, options: options)
+        // Without a screen to present from, the checkout still settles (`host_gone`) through its callbacks.
+        let presenter = SheetPresenter(host: viewController ?? topViewController(), options: options)
         return try await Checkout.present(options, presenter: presenter, browser: presenter.browser)
     }
 
@@ -43,28 +41,73 @@ public enum WajubCheckout {
 /// Presents the SwiftUI sheet modally and turns UIKit dismissals into checkout events.
 @MainActor
 final class SheetPresenter: NSObject, CheckoutPresenting, UIAdaptivePresentationControllerDelegate {
+    /// How many times a presentation waits for a transition running on the host before giving up.
+    private static let maxWaits = 40
     private weak var host: UIViewController?
     private let options: PresentOptions
     private var sheet: CheckoutHostingController?
     private var foregroundObserver: NSObjectProtocol?
     let browser = SystemBrowser()
 
-    init(host: UIViewController, options: PresentOptions) {
+    init(host: UIViewController?, options: PresentOptions) {
         self.host = host
         self.options = options
     }
 
     func present(_ controller: CheckoutController) {
-        // Present from the top of the host's stack, and only from a screen that is on screen:
-        // UIKit drops a presentation it cannot make without telling anyone.
-        var top = host
-        while let presented = top?.presentedViewController, !presented.isBeingDismissed {
-            top = presented
-        }
-        guard let host = top, host.viewIfLoaded?.window != nil, !host.isBeingDismissed else {
+        present(controller, waits: 0)
+    }
+
+    /// Presents from the top of the host's stack once no transition runs there. UIKit drops a
+    /// presentation it cannot make without telling anyone: a dropped one settles the checkout.
+    private func present(_ controller: CheckoutController, waits: Int) {
+        guard controller.result == nil else { return }
+        guard var top = host, top.viewIfLoaded?.window != nil else {
             controller.hostGone()
             return
         }
+        while let presented = top.presentedViewController, !presented.isBeingDismissed {
+            top = presented
+        }
+        let transitioning = top.presentedViewController != nil || top.isBeingPresented || top.isBeingDismissed
+            || top.transitionCoordinator != nil
+        if transitioning {
+            guard waits < SheetPresenter.maxWaits else {
+                controller.hostGone()
+                return
+            }
+            let retry: @MainActor @Sendable () -> Void = { [weak self, weak controller] in
+                guard let self, let controller else { return }
+                self.present(controller, waits: waits + 1)
+            }
+            let coordinator = top.presentedViewController?.transitionCoordinator ?? top.transitionCoordinator
+            let queued = coordinator?.animate(alongsideTransition: nil) { _ in
+                Task { @MainActor in retry() }
+            } ?? false
+            if !queued {
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 100_000_000)
+                    retry()
+                }
+            }
+            return
+        }
+        let sheet = makeSheet(for: controller, host: top)
+        top.present(sheet, animated: true)
+        guard top.presentedViewController === sheet else {
+            // Refused by UIKit: nothing is on screen.
+            self.sheet = nil
+            controller.hostGone()
+            return
+        }
+        // Back from a wallet's app or the browser (not after Face ID or Control Center, which never leave the app).
+        foregroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak controller] _ in
+            Task { @MainActor in controller?.appWillEnterForeground() }
+        }
+    }
+
+    private func makeSheet(for controller: CheckoutController, host: UIViewController) -> CheckoutHostingController {
         let inherited = options.appearance?.inherit == true ? InheritedThemeReader.read(from: host) : nil
         let model = CheckoutViewModel(controller: controller, inherited: inherited)
         let sheet = CheckoutHostingController(model: model)
@@ -89,20 +132,28 @@ final class SheetPresenter: NSObject, CheckoutPresenting, UIAdaptivePresentation
         sheet.onAppear = { [weak browser] in browser?.sheetDidAppear() }
         browser.sheet = sheet
         self.sheet = sheet
-        // Back from a wallet's app or the browser (not after Face ID or Control Center, which never leave the app).
-        foregroundObserver = NotificationCenter.default.addObserver(
-            forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak controller] _ in
-            Task { @MainActor in controller?.appWillEnterForeground() }
-        }
-        host.present(sheet, animated: true)
+        return sheet
     }
 
-    func dismiss(_ controller: CheckoutController) {
+    /// Dismissing from the presenter removes the sheet and Safari above it, if it is open; `completion`
+    /// runs once both are gone.
+    func dismiss(_ controller: CheckoutController, completion: @escaping @MainActor @Sendable () -> Void) {
         if let foregroundObserver { NotificationCenter.default.removeObserver(foregroundObserver) }
         foregroundObserver = nil
-        // Dismissing from the presenter removes the sheet and Safari above it, if it is open.
-        guard let sheet, let presenting = sheet.presentingViewController, !sheet.isBeingDismissed else { return }
-        presenting.dismiss(animated: true)
+        guard let sheet, let presenting = sheet.presentingViewController else {
+            completion()
+            return
+        }
+        if sheet.isBeingDismissed {
+            let queued = sheet.transitionCoordinator?.animate(alongsideTransition: nil) { _ in
+                Task { @MainActor in completion() }
+            } ?? false
+            if !queued { completion() }
+            return
+        }
+        presenting.dismiss(animated: true) {
+            Task { @MainActor in completion() }
+        }
     }
 
     /// The payer swiped the sheet down.
@@ -132,17 +183,24 @@ final class CheckoutHostingController: UIHostingController<CheckoutSheetView> {
         onAppear?()
     }
 
+    /// While the sheet is off screen (swiped away, covered by Safari, or its host's stack torn down),
+    /// it checks twice a second whether it is still presented; once it is not and the checkout has not
+    /// settled, the host went away. A swipe settles the checkout itself first.
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
-        // A swipe reaches `presentationControllerDidDismiss` right after this and dismisses the
-        // checkout itself, and the sheet also disappears under Safari: give it a moment, then
-        // settle only if the sheet is really gone (its host's stack was torn down).
         let controller = model.controller
         Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 300_000_000)
-            let gone = self?.presentingViewController == nil
-            if gone && controller.result == nil && !controller.isClosing {
-                controller.hostGone()
+            while controller.result == nil {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                guard let self else {
+                    if !controller.isClosing { controller.hostGone() }
+                    return
+                }
+                if self.viewIfLoaded?.window != nil { return }
+                if self.presentingViewController == nil {
+                    if !controller.isClosing { controller.hostGone() }
+                    return
+                }
             }
         }
     }
@@ -153,9 +211,10 @@ final class CheckoutHostingController: UIHostingController<CheckoutSheetView> {
 @MainActor
 final class SystemBrowser: NSObject, BrowserOpening, SFSafariViewControllerDelegate, UIAdaptivePresentationControllerDelegate {
     weak var sheet: UIViewController?
-    private var onClose: (@MainActor () -> Void)?
+    private var onClose: (@MainActor @Sendable () -> Void)?
+    private var returnObserver: NSObjectProtocol?
 
-    func open(_ url: URL, mode: BrowserMode, onClose: @escaping @MainActor () -> Void) async -> Bool {
+    func open(_ url: URL, mode: BrowserMode, onClose: @escaping @MainActor @Sendable () -> Void) async -> Bool {
         if mode == .inApp, let sheet, sheet.presentedViewController == nil, sheet.viewIfLoaded?.window != nil,
            !sheet.isBeingPresented, !sheet.isBeingDismissed {
             let safari = SFSafariViewController(url: url)
@@ -166,11 +225,20 @@ final class SystemBrowser: NSObject, BrowserOpening, SFSafariViewControllerDeleg
             safari.presentationController?.delegate = self
             return true
         }
-        return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+        let opened = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             UIApplication.shared.open(url, options: [:]) { opened in
                 continuation.resume(returning: opened)
             }
         }
+        if opened && mode == .inApp {
+            // Asked for in the app but handed to the system: the payer is back when the app is.
+            self.onClose = onClose
+            returnObserver = NotificationCenter.default.addObserver(
+                forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.closed() }
+            }
+        }
+        return opened
     }
 
     /// "Close" in Safari.
@@ -189,6 +257,8 @@ final class SystemBrowser: NSObject, BrowserOpening, SFSafariViewControllerDeleg
     }
 
     private func closed() {
+        if let returnObserver { NotificationCenter.default.removeObserver(returnObserver) }
+        returnObserver = nil
         let onClose = self.onClose
         self.onClose = nil
         onClose?()

@@ -149,9 +149,10 @@ public final class WajubSession: @unchecked Sendable {
     }
 
     /// Sends a call with its retry policy and returns the last HTTP answer, whatever its status.
-    /// Throws `TransportError` (no answer after the retries) or `CancellationError`.
+    /// Throws `TransportError` (no answer after the retries) or `CancellationError`. `onSend` hears
+    /// the time each try is sent.
     func send(_ endpoint: Endpoint, body: JSONValue? = nil, idempotencyKey: String? = nil,
-              policy: RetryPolicy? = nil) async throws -> APIAnswer {
+              policy: RetryPolicy? = nil, onSend: (@Sendable (Date) -> Void)? = nil) async throws -> APIAnswer {
         let policy = policy ?? endpoint.retryPolicy
         // Encoded once: an automatic retry resends exactly the same bytes.
         let bodyData = body?.serialized()
@@ -162,7 +163,8 @@ public final class WajubSession: @unchecked Sendable {
                                       headers: headers(hasBody: bodyData != nil, idempotencyKey: idempotencyKey),
                                       body: bodyData, connectTimeout: Timing.connectTimeout, timeout: endpoint.timeout)
             do {
-                let answer = APIAnswer(try await transport.send(request))
+                onSend?(clock.now)
+                let answer = APIAnswer(try await timedSend(request))
                 guard retries < policy.maxRetries, policy.statuses.contains(answer.status) else { return answer }
                 if answer.status == 429 {
                     guard policy.waitsRetryAfter,
@@ -179,6 +181,28 @@ public final class WajubSession: @unchecked Sendable {
                 try await clock.sleep(seconds: backoff(retries))
                 retries += 1
             }
+        }
+    }
+
+    /// One HTTP request under the contract's two timeouts (README §2.4), measured on the SDK's clock:
+    /// not connected within `connectTimeout`, or not answered within `timeout`, is `TransportError.timeout`.
+    func timedSend(_ request: HTTPRequest) async throws -> HTTPResponse {
+        let transport = self.transport
+        let clock = self.clock
+        let connection = ConnectionFlag()
+        return try await withThrowingTaskGroup(of: HTTPResponse.self) { group in
+            group.addTask {
+                try await transport.send(request, connected: { connection.set() })
+            }
+            group.addTask {
+                try await clock.sleep(seconds: request.connectTimeout)
+                guard connection.isSet else { throw TransportError.timeout }
+                try await clock.sleep(seconds: max(request.timeout - request.connectTimeout, 0))
+                throw TransportError.timeout
+            }
+            defer { group.cancelAll() }
+            guard let response = try await group.next() else { throw TransportError.timeout }
+            return response
         }
     }
 
@@ -247,5 +271,23 @@ public final class WajubSession: @unchecked Sendable {
     /// Whether a `/pay/3ds/verify` refusal keeps the code screen: a 5xx, or `error.retryable: true`.
     static func threeDSKeepsScreen(_ answer: APIAnswer) -> Bool {
         answer.status >= 500 || answer.body.map(APIErrorBody.init(json:))?.nestedError?.retryable == true
+    }
+}
+
+/// Set once the transport reports the connection.
+private final class ConnectionFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+
+    var isSet: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+
+    func set() {
+        lock.lock()
+        value = true
+        lock.unlock()
     }
 }

@@ -23,6 +23,9 @@ enum Timing {
     static let pollErrorMax: TimeInterval = 60
     static let pollErrorJitter = 0.2
     static let pollOverallCap: TimeInterval = 900
+    /// A `POST /pay/process` without an answer whose payment still reads `pending` this long after its
+    /// last try most likely never reached the API.
+    static let unansweredRequestWait: TimeInterval = 60
 
     static let readyTimeoutMs = 15_000
     static let resendAfter: TimeInterval = 60

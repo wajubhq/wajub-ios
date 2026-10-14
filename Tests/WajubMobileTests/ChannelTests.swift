@@ -101,7 +101,15 @@ final class ChannelTests: XCTestCase {
         XCTAssertEqual(form.selection, "moov", "a disabled operator cannot be picked")
         form.setPhone("0501020304")
         XCTAssertEqual(form.selection, "moov", "nor preselected by detection")
-        XCTAssertEqual(form.validate(sandbox: false).error?.code, WajubError.Code.operatorMismatch, "never paid through another operator")
+        XCTAssertNil(form.validate(sandbox: false).error, "never a mismatch naming an operator that cannot be picked")
+
+        // Every operator out of its limits: they are all listed with their limits, and Pay is disabled.
+        let allOut = try SessionResponse(json: Fixtures.body("session-cm-aggregate").setting(["transaction", "amount_total"], to: 600_000))
+        let blocked = MobileMoneyForm(channels: allOut.channels.filter(\.isMobileMoney), config: Fixtures.config("sdk-config-cm-stripe"),
+                                      language: .en, amount: 600_000, options: MobileMoneyOptions(), geoCountry: "CM")
+        XCTAssertEqual(blocked.choices.map(\.limit), [.maximum(500_000), .maximum(500_000)])
+        XCTAssertTrue(blocked.hasNoOperator)
+        XCTAssertNil(blocked.selection)
     }
 
     /// CD-01 picks the card flavour
@@ -154,6 +162,41 @@ final class ChannelTests: XCTestCase {
         XCTAssertEqual(harness.recorder.redirects, ["https://checkout.psp.example/pay/abc123"])
         XCTAssertEqual(harness.browser.opened.first?.mode, .inApp)
         controller.hostGone()
+    }
+
+    /// CD-01 picks the card flavour
+    @MainActor func test_CD_01_treatsACollectedCardAsAnAttempt() async {
+        // The attempt starts with the Pay press: a dismiss while the card is tokenized resolves
+        // `processing`, cancels nothing, and no charge follows once the sheet has closed.
+        let collector = HeldCollector()
+        let harness = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
+        harness.collector = collector
+        harness.transport.answer("process-processing-mobile-money-sandbox", "cancel-200")
+        let controller = await harness.start()
+        controller.selectMethod("card")
+        controller.submitCard()
+        await waitUntil("collecting") { collector.pending != nil }
+        XCTAssertEqual(controller.state, .collectingDetails, "collecting a card is not PROCESSING")
+        controller.dismiss()
+        XCTAssertEqual(controller.result?.status, "processing")
+        collector.finish("pm_123")
+        await settle()
+        XCTAssertTrue(harness.processBodies().isEmpty, "no charge after the sheet closed")
+        XCTAssertTrue(harness.transport.requests("POST", "/pay/cancel").isEmpty)
+
+        // Collected while the sheet is open: the pm_ is sent.
+        let open = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
+        let openCollector = HeldCollector()
+        open.collector = openCollector
+        open.transport.answer("process-processing-mobile-money-sandbox")
+        let openController = await open.start()
+        openController.selectMethod("card")
+        openController.submitCard()
+        await waitUntil("collecting") { openCollector.pending != nil }
+        openCollector.finish("pm_123")
+        await waitUntil("sent") { open.processBodies().count == 1 }
+        XCTAssertEqual(open.processBodies()[0]["data"]?["payment_method_id"]?.string, "pm_123")
+        openController.hostGone()
     }
 
     /// CD-03 never sends raw card data in live
@@ -226,5 +269,20 @@ final class ChannelTests: XCTestCase {
         XCTAssertEqual(harness.recorder.redirects, ["https://pay.wave.com/c/cos-1x2y3z?a=10000&c=XOF&m=Maquis"])
         XCTAssertEqual(harness.browser.opened.first?.mode, .external)
         controller.hostGone()
+    }
+}
+
+/// A card collector that answers when the test says so.
+@MainActor
+final class HeldCollector: CardCollector {
+    var pending: CheckedContinuation<String?, Never>?
+
+    func collectPaymentMethod(_ request: CardCollectionRequest) async throws -> String? {
+        await withCheckedContinuation { pending = $0 }
+    }
+
+    func finish(_ paymentMethod: String?) {
+        pending?.resume(returning: paymentMethod)
+        pending = nil
     }
 }

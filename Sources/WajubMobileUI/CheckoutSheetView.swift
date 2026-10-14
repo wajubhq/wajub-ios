@@ -64,6 +64,7 @@ struct SheetHeader: View {
                         .frame(width: ThemeShape.inputHeight, height: ThemeShape.inputHeight)
                 }
                 .buttonStyle(.plain)
+                .disabled(controller.isCancelling)
                 .accessibilityLabel(Text(model.strings.close))
             }
             if controller.session != nil {

@@ -141,6 +141,29 @@ final class WatchingTests: XCTestCase {
         leftover.controller.hostGone()
     }
 
+    /// WT-02 decides on status
+    @MainActor func test_WT_02_readsAnEmptyAnswerAsNoInformation() async {
+        // An empty /pay/status, then a realtime frame without a status, say nothing: keep watching.
+        let harness = await approving([.json(200, [:]), .json(200, ["transaction": [:]]), .fixture("status-succeeded")],
+                                      process: "process-processing-mobile-money-live")
+        harness.transport.answer("broadcasting-auth-200")
+        await harness.advance(by: 5)
+        await harness.advance(by: 5)
+        XCTAssertEqual(harness.controller.state, .approvalRequired, "never read as pending, never a failure")
+        XCTAssertTrue(harness.recorder.errors.isEmpty)
+        await waitUntil("socket") { harness.sockets.count == 1 }
+        let socket = harness.sockets[0]
+        socket.push(["event": "pusher:connection_established", "data": .string("{\"socket_id\":\"1.2\"}")])
+        await waitUntil("subscribed") { socket.sentFrames.contains { $0["event"]?.string == "pusher:subscribe" } }
+        socket.push(["event": "PaymentStatusUpdated", "channel": "private-payment.trx_PVrU8x2kQ1mNa7Lb3cDe",
+                     "data": .string("{\"status_label\":\"Pending\",\"error_code\":\"insufficient_funds\"}")])
+        await settle()
+        XCTAssertEqual(harness.controller.state, .approvalRequired)
+        await harness.advance(by: 15)
+        XCTAssertEqual(harness.controller.state, .success)
+        harness.controller.hostGone()
+    }
+
     /// WT-03 subscribes to the payment channel
     @MainActor func test_WT_03_subscribesToThePaymentChannel() async throws {
         let harness = await approving([.fixture("status-processing")], process: "process-processing-mobile-money-live")

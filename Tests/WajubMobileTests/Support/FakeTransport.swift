@@ -9,28 +9,35 @@ extension NSLock {
     }
 }
 
-/// A gate a fake answer waits on until the test opens it.
+/// A gate a fake answer waits on until the test opens it (or the request is cancelled).
 final class Gate: @unchecked Sendable {
     private let lock = NSLock()
     private var isOpen = false
-    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var waiters: [UUID: CheckedContinuation<Void, Never>] = [:]
 
     func wait() async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            let open = lock.locked { () -> Bool in
-                if !isOpen { waiters.append(continuation) }
-                return isOpen
+        let id = UUID()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                let resumeNow = lock.locked { () -> Bool in
+                    if isOpen || Task.isCancelled { return true }
+                    waiters[id] = continuation
+                    return false
+                }
+                if resumeNow { continuation.resume() }
             }
-            if open { continuation.resume() }
+        } onCancel: {
+            let waiter = lock.locked { waiters.removeValue(forKey: id) }
+            waiter?.resume()
         }
     }
 
     func open() {
-        lock.lock()
-        isOpen = true
-        let waiters = self.waiters
-        self.waiters = []
-        lock.unlock()
+        let waiters = lock.locked { () -> [CheckedContinuation<Void, Never>] in
+            isOpen = true
+            defer { self.waiters = [:] }
+            return Array(self.waiters.values)
+        }
         waiters.forEach { $0.resume() }
     }
 }
@@ -41,9 +48,16 @@ final class FakeTransport: HTTPTransport, @unchecked Sendable {
         case fixture(String)
         case json(Int, JSONValue, headers: [String: String] = [:])
         case failure(TransportError)
-        /// Waits for the gate, then answers.
+        /// Connected; waits for the gate, then answers.
         indirect case gated(Gate, Reply)
+        /// Connected; answers after `seconds` on the transport's clock.
+        indirect case delayed(TimeInterval, Reply)
+        /// Never connects, never answers.
+        case stall
     }
+
+    /// The clock `delayed` replies wait on.
+    var clock: WajubClock?
 
     struct Request {
         var method: String
@@ -90,11 +104,17 @@ final class FakeTransport: HTTPTransport, @unchecked Sendable {
         requests.filter { $0.method == method && $0.path == path }
     }
 
-    func send(_ request: HTTPRequest) async throws -> HTTPResponse {
+    func send(_ request: HTTPRequest, connected: @escaping @Sendable () -> Void) async throws -> HTTPResponse {
         let key = "\(request.method) \(request.url.path)"
         guard let reply = record(request) else {
+            connected()
             return HTTPResponse(status: 404, body: Data("{\"code\":404,\"status\":\"Not Found\",\"message\":\"no fake for \(key)\"}".utf8))
         }
+        if case .stall = reply {
+            await Gate().wait()
+            throw TransportError.cancelled
+        }
+        connected()
         return try await respond(reply)
     }
 
@@ -124,8 +144,17 @@ final class FakeTransport: HTTPTransport, @unchecked Sendable {
             throw error
         case .gated(let gate, let next):
             await gate.wait()
-            try Task.checkCancellation()
+            if Task.isCancelled { throw TransportError.cancelled }
             return try await respond(next)
+        case .delayed(let seconds, let next):
+            do {
+                try await clock?.sleep(seconds: seconds)
+            } catch {
+                throw TransportError.cancelled
+            }
+            return try await respond(next)
+        case .stall:
+            throw TransportError.cancelled
         }
     }
 }

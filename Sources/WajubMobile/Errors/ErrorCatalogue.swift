@@ -58,7 +58,7 @@ enum ErrorCatalogue {
         "invalid_phone": E(type: .invalidRequestError, retryable: true,
                            en: "Invalid phone number", fr: "Numéro de téléphone invalide"),
         "operator_mismatch": E(type: .invalidRequestError, retryable: true,
-                               en: "This is a {detected} number. Pick {detected} in the list, or enter a {selected} number.",
+                               en: "This number belongs to {detected}. Pick {detected} in the list, or enter a {selected} number.",
                                fr: "Ce numéro est un numéro {detected}. Choisissez {detected} dans la liste, ou saisissez un numéro {selected}."),
         "operator_required": E(type: .invalidRequestError, retryable: true,
                                en: "Choose your Mobile Money operator.", fr: "Choisissez votre opérateur Mobile Money."),
