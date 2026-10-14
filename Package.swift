@@ -7,11 +7,17 @@ let package = Package(
     products: [
         // Models, API client, Mobile Money rules, status watching and the checkout state machine.
         .library(name: "WajubMobile", targets: ["WajubMobile"]),
+        // The SwiftUI payment sheet and its UIKit presenter.
+        .library(name: "WajubMobileUI", targets: ["WajubMobileUI"]),
     ],
     targets: [
         .target(
             name: "WajubMobile",
             resources: [.copy("Resources/mobile-money.json")]
+        ),
+        .target(
+            name: "WajubMobileUI",
+            dependencies: ["WajubMobile"]
         ),
         .testTarget(
             name: "WajubMobileTests",
