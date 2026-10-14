@@ -150,9 +150,9 @@ extension DeviceEnvironment {
 final class FakeBrowser: BrowserOpening {
     var opened: [(url: URL, mode: BrowserMode)] = []
     var canOpen = true
-    var onClose: (@MainActor () -> Void)?
+    var onClose: (@MainActor @Sendable () -> Void)?
 
-    func open(_ url: URL, mode: BrowserMode, onClose: @escaping @MainActor () -> Void) async -> Bool {
+    func open(_ url: URL, mode: BrowserMode, onClose: @escaping @MainActor @Sendable () -> Void) async -> Bool {
         opened.append((url, mode))
         self.onClose = onClose
         return canOpen
@@ -169,8 +169,22 @@ final class FakePresenter: CheckoutPresenting {
     var presented: [CheckoutController] = []
     var dismissed: [CheckoutController] = []
 
+    /// Holds the dismissal's end until the test releases it.
+    var holdsDismissal = false
+    private var pendingCompletion: (@MainActor @Sendable () -> Void)?
+
     func present(_ controller: CheckoutController) { presented.append(controller) }
-    func dismiss(_ controller: CheckoutController) { dismissed.append(controller) }
+
+    func dismiss(_ controller: CheckoutController, completion: @escaping @MainActor @Sendable () -> Void) {
+        dismissed.append(controller)
+        if holdsDismissal { pendingCompletion = completion } else { completion() }
+    }
+
+    /// The sheet is gone.
+    func finishDismissal() {
+        pendingCompletion?()
+        pendingCompletion = nil
+    }
 }
 
 /// A WebSocket whose frames the test pushes.
@@ -288,6 +302,7 @@ final class Harness {
     private(set) var controller: CheckoutController!
 
     init(session: String? = nil, config: String? = nil) {
+        transport.clock = clock
         if let session { transport.on("GET", "/pay/session", .fixture(session)) }
         if let config { transport.on("GET", "/pay/sdk-config", .fixture(config)) }
         else { transport.on("GET", "/pay/sdk-config", .fixture("sdk-config-sandbox")) }

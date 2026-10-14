@@ -67,6 +67,29 @@ final class MobileMoneyTests: XCTestCase {
         XCTAssertEqual(form.selection, "mtn", "a pick by hand is never overridden")
     }
 
+    /// MM-03 matches the preselection vectors
+    func test_MM_03_keepsThePickVisibleInDetectMode() {
+        let session = Fixtures.session("session-cm-aggregate")
+        var form = MobileMoneyForm(channels: session.channels.filter(\.isMobileMoney), config: nil, language: .en, amount: 25000,
+                                   options: MobileMoneyOptions(operatorMode: .detect), geoCountry: "CM")
+        XCTAssertFalse(form.isOperatorListVisible)
+        XCTAssertNil(form.badgeChoice, "nothing detected yet, two operators")
+        form.setPhone("691234567")
+        XCTAssertFalse(form.isOperatorListVisible)
+        XCTAssertEqual(form.badgeChoice?.id, "orange")
+        XCTAssertEqual(form.selection, "orange")
+        form.pick("mtn")
+        XCTAssertTrue(form.isOperatorListVisible, "a pick by hand stays in view")
+        form.setPhone("6912345678")
+        XCTAssertTrue(form.isOperatorListVisible)
+        XCTAssertEqual(form.selection, "mtn")
+        form.setPhone("691234567")
+        XCTAssertEqual(form.validate(sandbox: false).error?.code, WajubError.Code.operatorMismatch,
+                       "the list it names is on screen")
+        XCTAssertEqual(form.validate(sandbox: false).error?.message,
+                       "This number belongs to Orange Money. Pick Orange Money in the list, or enter a MTN MoMo number.")
+    }
+
     /// MM-04 lists aggregate operators
     func test_MM_04_listsAggregateOperators() {
         let aggregate = makeForm("session-cm-aggregate")

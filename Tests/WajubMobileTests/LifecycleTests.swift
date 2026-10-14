@@ -19,6 +19,45 @@ final class LifecycleTests: XCTestCase {
         XCTAssertFalse(harness.recorder.states.contains(.processing), "cancelling is not PROCESSING")
     }
 
+    /// CN-01 cancels on request
+    @MainActor func test_CN_01_finishesTheCancelWhateverHappensMeanwhile() async {
+        let harness = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
+        let gate = Gate()
+        harness.transport.on("POST", "/pay/cancel", .gated(gate, .fixture("cancel-200")))
+        harness.transport.answer("process-processing-mobile-money-sandbox")
+        let controller = await harness.start()
+        controller.setPhone("670000000")
+        controller.cancelPayment()
+        XCTAssertTrue(controller.isCancelling)
+        XCTAssertFalse(controller.canCancelPayment)
+        // Pay and a dismiss while the cancel runs change nothing.
+        controller.submitMobileMoney()
+        controller.dismiss()
+        await settle()
+        XCTAssertTrue(harness.processBodies().isEmpty, "no payment while cancelling")
+        XCTAssertNil(controller.result)
+        gate.open()
+        await waitUntil("closed") { controller.result != nil }
+        XCTAssertEqual(harness.transport.requests("POST", "/pay/cancel").count, 1, "one cancel, sent to its end")
+        guard case .cancelled(let reason, let redirect)? = controller.result else { return XCTFail("not cancelled") }
+        XCTAssertEqual(reason, .payerCancelled)
+        XCTAssertNotNil(redirect, "redirect_url kept")
+
+        // The host going away during the cancel settles at once; the cancel still reaches the API.
+        let gone = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
+        let goneGate = Gate()
+        gone.transport.on("POST", "/pay/cancel", .gated(goneGate, .fixture("cancel-200")))
+        let goneController = await gone.start()
+        goneController.dismiss()
+        await waitUntil("cancel sent") { gone.transport.requests("POST", "/pay/cancel").count == 1 }
+        goneController.hostGone()
+        XCTAssertEqual(goneController.result, .cancelled(reason: .hostGone, redirectURL: nil))
+        goneGate.open()
+        await settle()
+        XCTAssertEqual(goneController.result, .cancelled(reason: .hostGone, redirectURL: nil))
+        XCTAssertEqual(gone.recorder.completions.count, 1)
+    }
+
     /// CN-02 cancels on dismiss before any attempt
     @MainActor func test_CN_02_cancelsOnDismissBeforeAnyAttempt() async {
         let harness = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
@@ -210,6 +249,50 @@ final class LifecycleTests: XCTestCase {
         XCTAssertFalse(Checkout.isPresenting)
     }
 
+    /// ST-03 resolves present once
+    @MainActor func test_ST_03_resolvesOnceTheSheetIsGone() async throws {
+        let harness = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
+        let controller = harness.makeController { $0.cancelOnDismiss = false }
+        let presenter = FakePresenter()
+        presenter.holdsDismissal = true
+        let resolved = Outcome()
+        Task { await resolved.recordResult { try await Checkout.present(controller, presenter: presenter) } }
+        await waitUntil("ready") { controller.state != nil }
+        controller.dismiss()
+        XCTAssertEqual(controller.result, .cancelled(reason: .dismissed, redirectURL: nil))
+        await settle()
+        XCTAssertNil(resolved.value, "the sheet is still going away")
+        XCTAssertTrue(Checkout.isPresenting)
+        presenter.finishDismissal()
+        await waitUntil("resolved") { resolved.value != nil }
+        XCTAssertEqual(resolved.value, "cancelled")
+        XCTAssertFalse(Checkout.isPresenting)
+
+        // Presenting again right away works.
+        let again = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
+        let next = again.makeController()
+        let nextPresenter = FakePresenter()
+        let second = Outcome()
+        Task { await second.recordResult { try await Checkout.present(next, presenter: nextPresenter) } }
+        await waitUntil("presented") { nextPresenter.presented.count == 1 }
+        await waitUntil("ready") { next.state != nil }
+        next.hostGone()
+        await waitUntil("resolved") { second.value != nil }
+        XCTAssertEqual(second.value, "cancelled")
+    }
+
+    /// ST-04 settles when the host goes away
+    @MainActor func test_ST_04_settlesWithoutAScreenToPresentFrom() async throws {
+        // A presenter that has no screen to present from settles through the callbacks.
+        let harness = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
+        let controller = harness.makeController()
+        let presenter = NoHostPresenter()
+        let result = try await Checkout.present(controller, presenter: presenter)
+        XCTAssertEqual(result, .cancelled(reason: .hostGone, redirectURL: nil))
+        XCTAssertEqual(harness.recorder.events, ["cancel:host_gone", "complete:cancelled"])
+        XCTAssertTrue(harness.transport.requests("GET", "/pay/session").isEmpty, "nothing loaded for a settled checkout")
+    }
+
     /// ST-04 settles when the host goes away
     @MainActor func test_ST_04_settlesWhenTheHostGoesAway() async {
         let before = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
@@ -241,6 +324,24 @@ final class LifecycleTests: XCTestCase {
         controller.start()
         controller.hostGone()
         XCTAssertEqual(controller.result, .cancelled(reason: .hostGone, redirectURL: nil))
+    }
+
+    /// ST-05 rejects a second present
+    @MainActor func test_ST_05_rejectsBeforeLookingForAScreen() async throws {
+        let first = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
+        let controller = first.makeController()
+        let task = Task { try await Checkout.present(controller, presenter: FakePresenter()) }
+        await waitUntil("ready") { controller.state != nil }
+        let second = NoHostPresenter()
+        do {
+            _ = try await Checkout.present(PresentOptions(sessionToken: "other"), presenter: second, browser: FakeBrowser())
+            XCTFail("a second present must reject")
+        } catch let error as WajubError {
+            XCTAssertEqual(error.code, WajubError.Code.sheetAlreadyPresented)
+        }
+        XCTAssertEqual(second.calls, 0, "rejected before the presenter is asked anything")
+        controller.hostGone()
+        _ = try await task.value
     }
 
     /// ST-05 rejects a second present
@@ -309,5 +410,33 @@ final class LifecycleTests: XCTestCase {
         await waitUntil("success despite the callbacks") { controller.state == .success }
         controller.close()
         XCTAssertEqual(controller.result?.status, "complete")
+    }
+}
+
+/// A presenter with no screen to present from.
+@MainActor
+final class NoHostPresenter: CheckoutPresenting {
+    var calls = 0
+
+    func present(_ controller: CheckoutController) {
+        calls += 1
+        controller.hostGone()
+    }
+
+    func dismiss(_ controller: CheckoutController, completion: @escaping @MainActor @Sendable () -> Void) {
+        calls += 1
+        completion()
+    }
+}
+
+extension Outcome {
+    func recordResult(_ call: @Sendable () async throws -> CheckoutResult) async {
+        let text: String
+        do {
+            text = try await call().status
+        } catch {
+            text = "\(error)"
+        }
+        set(text)
     }
 }

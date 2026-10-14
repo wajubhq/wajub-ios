@@ -227,5 +227,41 @@ final class ErrorTests: XCTestCase {
         XCTAssertEqual(cardError.code, WajubError.Code.securityCheckFailed)
         XCTAssertEqual(cardRefused.transport.requests("POST", "/pay/client-session").count, 2)
         cardRefusedController.hostGone()
+
+        // A refusal with a field at fault is a validation error, whatever its message says.
+        let fieldRefused = Harness(config: "sdk-config-cm-stripe")
+        fieldRefused.transport.on("GET", "/pay/session", .json(200, session))
+        fieldRefused.transport.on("POST", "/pay/process", .json(422, ["code": 422, "message": "Security challenge verification failed",
+                                                                     "errors": ["data.phone": ["The phone field is required."]]]))
+        let fieldController = await fieldRefused.start()
+        fieldController.setPhone("670000000")
+        fieldController.submitMobileMoney()
+        await waitUntil("field error") { fieldController.fieldErrors["data.phone"] != nil }
+        XCTAssertEqual(fieldRefused.transport.requests("GET", "/pay/session").count, 1, "no reload")
+        fieldController.hostGone()
+    }
+
+    /// AL-01 solves altcha challenges
+    @MainActor func test_AL_01_spendsEachSolutionOnce() async throws {
+        func challenge(_ salt: String, _ number: Int) -> JSONValue {
+            ["algorithm": "SHA-256", "challenge": .string(Digest.sha256Hex(salt + String(number))), "salt": .string(salt),
+             "signature": "sig", "maxnumber": 5000]
+        }
+        let first = Fixtures.body("session-cm-aggregate").setting(["altcha"], to: challenge("one", 321))
+        let second = Fixtures.body("session-cm-aggregate").setting(["altcha"], to: challenge("two", 654))
+        let harness = Harness(config: "sdk-config-cm-stripe")
+        harness.transport.on("GET", "/pay/session", .json(200, first), .json(200, second))
+        harness.transport.answer("process-failed-402")
+        let controller = await harness.start()
+        controller.setPhone("670000000")
+        controller.submitMobileMoney()
+        await waitUntil("declined") { controller.state == .failed }
+        controller.tryAgain()
+        controller.submitMobileMoney()
+        await waitUntil("second try") { harness.processBodies().count == 2 }
+        XCTAssertEqual(harness.processBodies().map { $0["data"]?["altcha"]?["number"]?.int }, [321, 654],
+                       "a new challenge for the second submission")
+        XCTAssertEqual(harness.transport.requests("GET", "/pay/session").count, 2)
+        controller.hostGone()
     }
 }

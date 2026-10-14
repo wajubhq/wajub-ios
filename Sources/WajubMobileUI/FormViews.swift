@@ -123,18 +123,19 @@ struct MobileMoneyFormView: View {
                     countryPicker(form)
                 }
                 phoneField(form)
-                if form.isOperatorListVisible && !form.hasNoOperator {
+                // Every operator out of its limits is still listed, with its limit.
+                if !form.choices.isEmpty && (form.isOperatorListVisible || form.hasNoOperator) {
                     operatorList(form)
                 }
-                if form.hasNoOperator {
+                if form.choices.isEmpty {
                     BannerView(message: model.strings.errorMessage(WajubError.Code.operatorUnavailable), foreground: style.warning,
                                background: style.warningBackground, style: style)
                 }
                 if let warning = controller.warning {
                     BannerView(message: warning.message, foreground: style.warning, background: style.warningBackground, style: style)
                 }
-                PrimaryButton(title: model.strings.pay(controller.formattedAmount), style: style, busy: controller.isWorking,
-                              enabled: !form.hasNoOperator) {
+                PrimaryButton(title: model.strings.pay(controller.formattedAmount), style: style, busy: controller.isPaying,
+                              enabled: !form.hasNoOperator && !controller.isCancelling) {
                     controller.submitMobileMoney()
                 }
             }
@@ -289,7 +290,7 @@ struct CardFormView: View {
                 EmptyView()
             }
             PrimaryButton(title: isStripe ? strings.payByCard : strings.pay(controller.formattedAmount), style: style,
-                          busy: controller.isWorking) {
+                          busy: controller.isPaying, enabled: !controller.isCancelling) {
                 controller.submitCard()
             }
         }
@@ -364,7 +365,8 @@ struct WalletView: View {
             Text(model.strings.walletHint(name))
                 .font(style.body)
                 .foregroundColor(style.textSecondary)
-            PrimaryButton(title: model.strings.payWith(name), style: style, busy: controller.isWorking) {
+            PrimaryButton(title: model.strings.payWith(name), style: style, busy: controller.isPaying,
+                          enabled: !controller.isCancelling) {
                 controller.payWallet()
             }
         }

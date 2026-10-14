@@ -1,7 +1,8 @@
 import XCTest
 @testable import WajubMobile
 
-/// A clock whose sleeps return at once (and are recorded).
+/// A clock whose sleeps return at once (and are recorded), for retry backoffs. The request timers
+/// (their first sleep is the 10 s connect budget) never fire: `test_TR_05` covers them on a `TestClock`.
 final class ImmediateClock: WajubClock, @unchecked Sendable {
     private let lock = NSLock()
     private var recorded: [TimeInterval] = []
@@ -9,12 +10,36 @@ final class ImmediateClock: WajubClock, @unchecked Sendable {
     var sleeps: [TimeInterval] { lock.locked { recorded } }
 
     func sleep(seconds: TimeInterval) async throws {
+        if seconds == Timing.connectTimeout {
+            try await Task.sleep(nanoseconds: 3_600_000_000_000)
+        }
         record(seconds)
         try Task.checkCancellation()
     }
 
     private func record(_ seconds: TimeInterval) {
         lock.locked { recorded.append(seconds) }
+    }
+}
+
+/// The end of a call: its HTTP status, or the error it threw.
+final class Outcome: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: String?
+    var value: String? { lock.locked { stored } }
+
+    func record(_ call: @Sendable () async throws -> APIAnswer) async {
+        let text: String
+        do {
+            text = String(try await call().status)
+        } catch {
+            text = "\(error)"
+        }
+        set(text)
+    }
+
+    func set(_ text: String) {
+        lock.locked { stored = text }
     }
 }
 
@@ -114,6 +139,56 @@ final class TransportTests: XCTestCase {
             XCTAssertEqual(request.connectTimeout, 10, endpoint.path)
             XCTAssertEqual(request.timeout, timeout, endpoint.path)
         }
+    }
+
+    /// TR-05 applies per-call timeouts
+    @MainActor func test_TR_05_enforcesTheTimeoutsOnTheClock() async throws {
+        let clock = TestClock()
+        let transport = FakeTransport()
+        transport.clock = clock
+        let session = client(transport, clock: clock)
+
+        // Never connected: a timeout after 10 s, not after the call's 30 s.
+        transport.on("GET", "/pay/status", .stall)
+        let unconnected = Outcome()
+        Task { await unconnected.record { try await session.send(.status, policy: .noRetry) } }
+        await waitUntil("timers") { clock.hasSleeper(dueWithin: 10) }
+        await clock.advance(by: 9.9)
+        XCTAssertNil(unconnected.value, "still connecting")
+        await clock.advance(by: 0.2)
+        await waitUntil("timed out") { unconnected.value != nil }
+        XCTAssertEqual(unconnected.value, "timeout")
+
+        // Connected, answered after 40 s: within a payment call's 60 s.
+        transport.on("POST", "/pay/process", .delayed(40, .fixture("process-processing-mobile-money-sandbox")))
+        let slowPayment = Outcome()
+        Task { await slowPayment.record { try await session.send(.process, body: [:], idempotencyKey: "k", policy: .noRetry) } }
+        await waitUntil("timers") { clock.hasSleeper(dueWithin: 10) }
+        await clock.advance(by: 40)
+        await waitUntil("answered") { slowPayment.value != nil }
+        XCTAssertEqual(slowPayment.value, "202")
+
+        // Connected, answered after 35 s: beyond a read's 30 s.
+        transport.on("GET", "/pay/status", .delayed(35, .fixture("status-processing")))
+        let slowRead = Outcome()
+        Task { await slowRead.record { try await session.send(.status, policy: .noRetry) } }
+        await waitUntil("timers") { clock.hasSleeper(dueWithin: 10) }
+        await clock.advance(by: 29)
+        XCTAssertNil(slowRead.value)
+        await clock.advance(by: 2)
+        await waitUntil("timed out") { slowRead.value != nil }
+        XCTAssertEqual(slowRead.value, "timeout")
+
+        // A timed-out read is retried like any timeout (TR-08).
+        transport.on("GET", "/pay/session", .stall, .fixture("session-cm-aggregate"))
+        let retried = Outcome()
+        Task { await retried.record { try await session.send(.session) } }
+        await waitUntil("timers") { clock.hasSleeper(dueWithin: 10) }
+        await clock.advance(by: 10)
+        await waitUntil("backoff") { clock.hasSleeper(dueWithin: 2) }
+        await clock.advance(by: 2)
+        await waitUntil("answered") { retried.value != nil }
+        XCTAssertEqual(retried.value, "200")
     }
 
     /// TR-06 retries process with the same idempotency key
@@ -227,6 +302,49 @@ final class TransportTests: XCTestCase {
         XCTAssertEqual(harness.transport.requests("GET", "/pay/status").count, 2)
         controller.close()
         XCTAssertEqual(controller.result?.status, "complete")
+
+        // Still `pending` (never `processing`, no error_code) 60 s after the last try: the request most
+        // likely never reached the API. Back to the form with network_error; the next Pay reuses the key.
+        let pending: JSONValue = ["transaction": ["reference": "trx_PVrU8x2kQ1mNa7Lb3cDe", "status": "pending"]]
+        let lost = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
+        lost.transport.on("POST", "/pay/process", .failure(.timeout))
+        lost.transport.on("GET", "/pay/status", .json(200, pending))
+        let form = await lost.start()
+        form.setPhone("670000000")
+        form.submitMobileMoney()
+        await lost.drive(until: "pending") { form.state == .pending }
+        let firstKey = lost.transport.requests("POST", "/pay/process").last?.header("Idempotency-Key")
+        let lastTry = lost.clock.now
+        while lost.clock.now.timeIntervalSince(lastTry) < 55 {
+            await lost.advance(by: 5)
+            XCTAssertEqual(form.state, .pending, "still watching")
+        }
+        await lost.advance(by: 5)
+        XCTAssertEqual(form.state, .collectingDetails)
+        XCTAssertEqual(form.banner?.code, WajubError.Code.networkError)
+        XCTAssertTrue(form.banner?.retryable ?? false)
+        XCTAssertEqual(lost.recorder.errors.map(\.code), [WajubError.Code.networkError])
+        let polls = lost.transport.requests("GET", "/pay/status").count
+        await lost.clock.advance(by: 30)
+        XCTAssertEqual(lost.transport.requests("GET", "/pay/status").count, polls, "watching stopped")
+        lost.transport.answer("process-processing-mobile-money-sandbox")
+        form.submitMobileMoney()
+        await waitUntil("paid again") { form.state == .approvalRequired }
+        XCTAssertEqual(lost.transport.requests("POST", "/pay/process").last?.header("Idempotency-Key"), firstKey,
+                       "the same Idempotency-Key: a request that did arrive is replayed, not charged twice")
+        form.hostGone()
+
+        // A `pending` with an error_code is a previous attempt's leftover: keep watching.
+        let leftover = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
+        leftover.transport.on("POST", "/pay/process", .failure(.timeout))
+        leftover.transport.answer("status-pending-attempt-refused")
+        let waiting = await leftover.start()
+        waiting.setPhone("670000000")
+        waiting.submitMobileMoney()
+        await leftover.drive(until: "pending") { waiting.state == .pending }
+        for _ in 0..<14 { await leftover.advance(by: 5) }
+        XCTAssertEqual(waiting.state, .pending)
+        waiting.hostGone()
     }
 
     /// TR-10 defaults to the production api

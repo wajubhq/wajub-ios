@@ -51,6 +51,8 @@ public enum ProcessOutcome: Equatable, Sendable {
                                                   transaction: response.transaction))
         case .unsupportedAction(let response):
             self = .failed(error: .catalogue(WajubError.Code.unsupportedAction, language), transaction: response.transaction)
+        case .unconfirmed:
+            self = .processing(transaction: nil, instruction: nil, kind: .pending)
         case .refused(let answer):
             let body = answer.body.map(APIErrorBody.init(json:))
             if answer.status == 409, body?.errorCode == WajubError.Code.paymentInProgress {
@@ -90,6 +92,8 @@ enum PaymentAnswer: Sendable {
     case step(ConfirmStep, ProcessResponse)
     case clientSession(ClientSession, ProcessResponse)
     case unsupportedAction(ProcessResponse)
+    /// A 2xx with neither `action` nor `transaction`.
+    case unconfirmed(ProcessResponse)
     /// Any non-2xx answer.
     case refused(APIAnswer)
 
@@ -100,7 +104,9 @@ enum PaymentAnswer: Sendable {
         guard answer.isSuccess else { return .refused(answer) }
         let response = ProcessResponse(json: answer.body ?? .null)
         guard let action = response.action else {
-            if let transaction = response.transaction, transaction.status.isPaid {
+            // Nothing says what happened: an unknown outcome, to watch (never a failure).
+            guard let transaction = response.transaction else { return .unconfirmed(response) }
+            if transaction.status.isPaid {
                 return .succeeded(transaction)
             }
             let context = response.transaction?.processingContext

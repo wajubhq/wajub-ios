@@ -266,6 +266,45 @@ final class ConfirmationTests: XCTestCase {
         }
     }
 
+    /// CS-02 completes a client session
+    @MainActor func test_CS_02_waitsForThePageToCloseBeforeCompleting() async throws {
+        // The payer leaves for their bank's app while the provider page is still open in the sheet.
+        let harness = await clientSession("client-session-start-202")
+        await waitUntil("browser") { !harness.browser.opened.isEmpty }
+        harness.transport.on("GET", "/pay/status", .fixture("status-pending-attempt-refused"), .fixture("status-succeeded"))
+        harness.transport.answer("client-session-complete-402")
+        harness.controller.appWillEnterForeground()
+        await waitUntil("polled") { harness.transport.requests("GET", "/pay/status").count == 1 }
+        XCTAssertTrue(harness.transport.requests("POST", "/pay/client-session/complete").isEmpty, "never while the page is in front")
+        XCTAssertEqual(harness.controller.state, .pending, "a refused try on the open page is not the end")
+        await harness.advance(by: 5)
+        XCTAssertEqual(harness.controller.state, .success, "the payment made on the page wins")
+        harness.controller.hostGone()
+
+        // Every return from the browser completes, while the session is open.
+        let returns = await clientSession("client-session-start-202")
+        returns.transport.answer("client-session-complete-202")
+        await waitUntil("browser") { !returns.browser.opened.isEmpty }
+        returns.browser.close()
+        await waitUntil("completed") { returns.transport.requests("POST", "/pay/client-session/complete").count == 1 }
+        returns.controller.continuePayment()
+        await waitUntil("reopened") { returns.browser.opened.count == 2 }
+        returns.browser.close()
+        await waitUntil("completed again") { returns.transport.requests("POST", "/pay/client-session/complete").count == 2 }
+        XCTAssertEqual(returns.controller.state, .pending)
+
+        // A failure leaves nothing to continue.
+        returns.transport.answer("client-session-complete-402")
+        returns.controller.continuePayment()
+        await waitUntil("reopened") { returns.browser.opened.count == 3 }
+        returns.browser.close()
+        await waitUntil("failed") { returns.controller.state == .failed }
+        returns.controller.continuePayment()
+        await settle()
+        XCTAssertEqual(returns.browser.opened.count, 3, "no Continue payment after a failure")
+        returns.controller.hostGone()
+    }
+
     /// CS-03 reports client sessions unavailable in sandbox
     @MainActor func test_CS_03_reportsClientSessionsUnavailableInSandbox() async {
         let harness = await clientSession("client-session-422-sandbox")

@@ -66,6 +66,22 @@ final class PaymentAnswerTests: XCTestCase {
         }
     }
 
+    /// PA-03 maps unknown actions to unsupported_action
+    @MainActor func test_PA_03_watchesA2xxThatSaysNothing() async {
+        // A 2xx with neither action nor transaction: an unknown outcome, never a failure.
+        for body: JSONValue in [["code": 202, "status": "Accepted", "message": "Accepted"], [:]] {
+            let harness = await Harness.mobileMoney()
+            harness.transport.on("POST", "/pay/process", .json(202, body))
+            harness.transport.answer("status-succeeded")
+            harness.controller.submitMobileMoney()
+            await waitUntil("pending") { harness.controller.state == .pending }
+            XCTAssertTrue(harness.recorder.errors.isEmpty)
+            await harness.advance(by: 5)
+            XCTAssertEqual(harness.controller.state, .success)
+            harness.controller.hostGone()
+        }
+    }
+
     /// PA-04 maps declines
     @MainActor func test_PA_04_mapsDeclines() async {
         for (fixture, retryable) in [("process-failed-402", true), ("process-402-insufficient-funds-sandbox", true),
@@ -174,12 +190,32 @@ final class PaymentAnswerTests: XCTestCase {
         await waitUntil("success after re-reading the status") { notProcessable.controller.state == .success }
         notProcessable.controller.hostGone()
 
-        let stillPending = await Harness.mobileMoney(answers: "process-400-not-processable", "status-processing")
+        // Still processing: an attempt is running, so wait for it (README §9).
+        let running = await Harness.mobileMoney(answers: "process-400-not-processable", "status-processing")
+        running.controller.submitMobileMoney()
+        await waitUntil("pending") { running.controller.state == .pending }
+        XCTAssertTrue(running.recorder.errors.isEmpty)
+        await running.advance(by: 5)
+        XCTAssertEqual(running.transport.requests("GET", "/pay/status").count, 2, "watching")
+        running.controller.dismiss()
+        XCTAssertEqual(running.controller.result?.status, "processing", "money may move")
+
+        // Neither ended nor processing: not processable.
+        let stillPending = await Harness.mobileMoney(answers: "process-400-not-processable")
+        stillPending.transport.on("GET", "/pay/status", .json(200, ["transaction": ["reference": "trx", "status": "pending"]]))
         stillPending.controller.submitMobileMoney()
         await waitUntil("failed") { stillPending.controller.state == .failed }
         guard case .failed(let error) = stillPending.controller.screen else { return XCTFail("not failed") }
         XCTAssertEqual(error.code, WajubError.Code.notProcessable)
         stillPending.controller.hostGone()
+
+        // No information: never a refusal.
+        let silent = await Harness.mobileMoney(answers: "process-400-not-processable")
+        silent.transport.on("GET", "/pay/status", .json(200, [:]))
+        silent.controller.submitMobileMoney()
+        await waitUntil("pending") { silent.controller.state == .pending }
+        XCTAssertTrue(silent.recorder.errors.isEmpty)
+        silent.controller.hostGone()
 
         let ended = await Harness.mobileMoney(answers: "error-410-process-session-ended")
         ended.controller.submitMobileMoney()

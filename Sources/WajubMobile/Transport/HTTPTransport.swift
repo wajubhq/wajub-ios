@@ -35,7 +35,9 @@ enum TransportError: Error, Equatable, Sendable {
 
 /// Sends HTTP requests. The SDK uses `URLSessionTransport`; tests use a fake.
 protocol HTTPTransport: Sendable {
-    func send(_ request: HTTPRequest) async throws -> HTTPResponse
+    /// Sends `request`. Calls `connected` once the connection to the server is up, when the transport
+    /// can tell; the caller enforces `request.connectTimeout` and `request.timeout` itself.
+    func send(_ request: HTTPRequest, connected: @escaping @Sendable () -> Void) async throws -> HTTPResponse
 }
 
 /// An HTTP answer with its body read as JSON (when it is JSON).
@@ -63,27 +65,43 @@ struct APIAnswer: Sendable {
     var isSuccess: Bool { (200...299).contains(status) }
 }
 
-/// `URLSession`, one session per timeout class.
+/// `URLSession`.
 ///
-/// `URLSession` has no connect-only timeout: each request gets the call's whole timeout
-/// (30 s or 60 s) both as its idle timeout and as its resource timeout, so the 10 s connect budget
-/// of the contract is not enforced separately on Apple platforms.
+/// `URLSession` reports no connection event: a request with a body counts as connected once its body
+/// starts flowing (the TCP and TLS handshakes are done), a request without one when its answer
+/// arrives. `WajubSession` measures the contract's two timeouts against that; URLSession's own
+/// timeouts are a backstop a few seconds longer.
 final class URLSessionTransport: HTTPTransport, @unchecked Sendable {
+    private static let backstop: TimeInterval = 5
+    private let progress = ProgressDelegate()
+    private lazy var session: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = Timing.paymentRequestTimeout + URLSessionTransport.backstop
+        configuration.timeoutIntervalForResource = Timing.paymentRequestTimeout + URLSessionTransport.backstop
+        #if canImport(Darwin)
+        configuration.waitsForConnectivity = false
+        #endif
+        configuration.httpCookieStorage = nil
+        configuration.urlCache = nil
+        return URLSession(configuration: configuration, delegate: progress, delegateQueue: nil)
+    }()
     private let lock = NSLock()
-    private var sessions: [TimeInterval: URLSession] = [:]
 
-    func send(_ request: HTTPRequest) async throws -> HTTPResponse {
-        var urlRequest = URLRequest(url: request.url, timeoutInterval: request.timeout)
+    func send(_ request: HTTPRequest, connected: @escaping @Sendable () -> Void) async throws -> HTTPResponse {
+        var urlRequest = URLRequest(url: request.url, timeoutInterval: request.timeout + URLSessionTransport.backstop)
         urlRequest.httpMethod = request.method
         urlRequest.httpBody = request.body
         for (name, value) in request.headers {
             urlRequest.setValue(value, forHTTPHeaderField: name)
         }
-        let session = session(timeout: request.timeout)
+        let session = currentSession()
+        let progress = self.progress
         let box = TaskBox()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<HTTPResponse, Error>) in
                 let task = session.dataTask(with: urlRequest) { data, response, error in
+                    // With a completion handler the delegate hears of no completion: forget the task here.
+                    if let identifier = box.identifier { progress.forget(identifier) }
                     if let error {
                         continuation.resume(throwing: URLSessionTransport.map(error))
                         return
@@ -98,6 +116,7 @@ final class URLSessionTransport: HTTPTransport, @unchecked Sendable {
                     }
                     continuation.resume(returning: HTTPResponse(status: http.statusCode, headers: headers, body: data ?? Data()))
                 }
+                progress.watch(task, connected: connected)
                 box.start(task)
             }
         } onCancel: {
@@ -105,20 +124,9 @@ final class URLSessionTransport: HTTPTransport, @unchecked Sendable {
         }
     }
 
-    private func session(timeout: TimeInterval) -> URLSession {
+    private func currentSession() -> URLSession {
         lock.lock()
         defer { lock.unlock() }
-        if let session = sessions[timeout] { return session }
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = timeout
-        configuration.timeoutIntervalForResource = timeout
-        #if canImport(Darwin)
-        configuration.waitsForConnectivity = false
-        #endif
-        configuration.httpCookieStorage = nil
-        configuration.urlCache = nil
-        let session = URLSession(configuration: configuration)
-        sessions[timeout] = session
         return session
     }
 
@@ -132,11 +140,43 @@ final class URLSessionTransport: HTTPTransport, @unchecked Sendable {
         }
     }
 
+    /// Reports a task's connection once its body starts flowing.
+    private final class ProgressDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+        private let lock = NSLock()
+        private var callbacks: [Int: @Sendable () -> Void] = [:]
+
+        func watch(_ task: URLSessionTask, connected: @escaping @Sendable () -> Void) {
+            lock.lock()
+            callbacks[task.taskIdentifier] = connected
+            lock.unlock()
+        }
+
+        func forget(_ identifier: Int) {
+            lock.lock()
+            callbacks.removeValue(forKey: identifier)
+            lock.unlock()
+        }
+
+        func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64,
+                        totalBytesExpectedToSend: Int64) {
+            lock.lock()
+            let connected = callbacks.removeValue(forKey: task.taskIdentifier)
+            lock.unlock()
+            connected?()
+        }
+    }
+
     /// Lets a cancellation that arrives before the task exists still cancel it.
     private final class TaskBox: @unchecked Sendable {
         private let lock = NSLock()
         private var task: URLSessionDataTask?
         private var cancelled = false
+
+        var identifier: Int? {
+            lock.lock()
+            defer { lock.unlock() }
+            return task?.taskIdentifier
+        }
 
         func start(_ task: URLSessionDataTask) {
             lock.lock()

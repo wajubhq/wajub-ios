@@ -59,6 +59,9 @@ public struct StatusUpdate: Equatable, Sendable {
     public var errorCode: String?
     public var payerMessage: String?
 
+    /// An answer without a `status` says nothing: the watch carries on.
+    public var isInformative: Bool { !status.rawValue.isEmpty }
+
     public init(json: JSONValue) {
         reference = json["reference"]?.nonEmptyString ?? json["uid"]?.nonEmptyString
         status = TransactionStatus(rawValue: json["status"]?.string ?? "")

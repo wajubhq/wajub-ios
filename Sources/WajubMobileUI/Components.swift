@@ -116,7 +116,8 @@ struct InputField: View {
             .font(style.input)
             .foregroundColor(style.text)
             .keyboardType(keyboard)
-            .textContentType(contentType)
+            // A CVV or a PIN is not a password to save in the keychain.
+            .textContentType(contentType ?? (secure ? .oneTimeCode : nil))
             .disableAutocorrection(true)
             .autocapitalization(keyboard == .emailAddress ? .none : .words)
         }

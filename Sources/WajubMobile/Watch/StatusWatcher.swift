@@ -155,6 +155,8 @@ final class StatusWatcher {
         switch answer.status {
         case 200...299:
             let update = StatusResponse(json: answer.body ?? .null).transaction
+            // An empty answer is no information: poll again on schedule.
+            guard update.isInformative else { return }
             schedule.recordStatus(update.status, now: clock.now)
             onUpdate?(update)
         case 429:

@@ -86,21 +86,24 @@ public struct MobileMoneyForm: Equatable, Sendable {
 
     /// In `detect` mode the list stays hidden until the number (≥ 6 digits) names no offered operator,
     /// an operator-independent wallet is offered while the number names one, or the payer opens it.
+    /// Once the payer has picked by hand it stays shown, with their pick.
     public var isOperatorListVisible: Bool {
         guard operatorMode == .detect else { return true }
-        if listOpened { return true }
+        if listOpened || pickedByHand { return true }
+        let enabled = enabledIds
         let national = data.nationalDigits(phone, country: country)
         let detected = detectedOperator
-        let detectedOffered = detected.map { id in choices.contains { $0.id == id } } ?? false
-        if national.count >= 6 && !detectedOffered && choices.count > 1 { return true }
-        if detected != nil && choices.contains(where: \.isOperatorIndependent) { return true }
+        let detectedOffered = detected.map(enabled.contains) ?? false
+        if national.count >= 6 && !detectedOffered && enabled.count > 1 { return true }
+        if detected != nil && choices.contains(where: { $0.isOperatorIndependent && $0.limit == nil }) { return true }
         return false
     }
 
-    /// In `detect` mode, the operator shown inside the field: the detected one, or the only one.
+    /// In `detect` mode, the operator shown inside the field: the detected one, or the only one the payer can use.
     public var badgeChoice: OperatorChoice? {
-        if let detected = detectedOperator, let choice = choices.first(where: { $0.id == detected }) { return choice }
-        return choices.count == 1 ? choices.first : nil
+        let enabled = choices.filter { $0.limit == nil }
+        if let detected = detectedOperator, let choice = enabled.first(where: { $0.id == detected }) { return choice }
+        return enabled.count == 1 ? enabled.first : nil
     }
 
     // MARK: Changes
@@ -146,7 +149,8 @@ public struct MobileMoneyForm: Equatable, Sendable {
 
     /// The first problem of README §6.3, or `nil`. In sandbox an `operator_mismatch` does not block (it is returned as a warning).
     func validate(sandbox: Bool) -> (error: WajubError?, warning: WajubError?) {
-        let code = MobileMoneyForm.validationCode(phone: phone, country: country, choiceIds: choices.map(\.id),
+        // An operator out of its limits is not offered: never a mismatch toward it.
+        let code = MobileMoneyForm.validationCode(phone: phone, country: country, choiceIds: enabledIds,
                                                   selection: selection, data: data)
         guard let code else { return (nil, nil) }
         var error = WajubError.catalogue(code, language, values: mismatchLabels)
