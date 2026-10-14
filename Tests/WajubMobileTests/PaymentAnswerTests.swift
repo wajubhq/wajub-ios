@@ -209,6 +209,28 @@ final class PaymentAnswerTests: XCTestCase {
         XCTAssertEqual(error.code, WajubError.Code.notProcessable)
         stillPending.controller.hostGone()
 
+        // While the status is re-read the sheet stays busy: no Pay, no "Cancel payment"; a dismiss
+        // cancels the re-read and settles without a stray not_processable.
+        let rereading = await Harness.mobileMoney(answers: "process-400-not-processable")
+        let statusGate = Gate()
+        rereading.transport.on("GET", "/pay/status", .gated(statusGate, .json(200, ["transaction": ["reference": "trx", "status": "pending"]])))
+        rereading.transport.answer("cancel-200")
+        rereading.controller.submitMobileMoney()
+        await waitUntil("re-reading") { rereading.transport.requests("GET", "/pay/status").count == 1 }
+        XCTAssertEqual(rereading.controller.state, .processing)
+        XCTAssertTrue(rereading.controller.isWorking)
+        XCTAssertFalse(rereading.controller.canCancelPayment)
+        rereading.controller.cancelPayment()
+        rereading.controller.submitMobileMoney()
+        await settle()
+        XCTAssertEqual(rereading.transport.requests("POST", "/pay/process").count, 1, "no second Pay")
+        XCTAssertTrue(rereading.transport.requests("POST", "/pay/cancel").isEmpty)
+        rereading.controller.dismiss()
+        statusGate.open()
+        await waitUntil("closed") { rereading.controller.result != nil }
+        XCTAssertEqual(rereading.controller.result?.status, "cancelled")
+        XCTAssertTrue(rereading.recorder.errors.isEmpty, "no not_processable after the dismiss")
+
         // No information: never a refusal.
         let silent = await Harness.mobileMoney(answers: "process-400-not-processable")
         silent.transport.on("GET", "/pay/status", .json(200, [:]))

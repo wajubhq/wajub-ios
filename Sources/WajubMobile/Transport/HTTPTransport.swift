@@ -35,8 +35,12 @@ enum TransportError: Error, Equatable, Sendable {
 
 /// Sends HTTP requests. The SDK uses `URLSessionTransport`; tests use a fake.
 protocol HTTPTransport: Sendable {
-    /// Sends `request`. Calls `connected` once the connection to the server is up, when the transport
-    /// can tell; the caller enforces `request.connectTimeout` and `request.timeout` itself.
+    /// Whether `send` calls `connected` for this request. The connect timeout applies only then:
+    /// a transport that cannot tell is given the whole-call timeout alone.
+    func reportsConnection(for request: HTTPRequest) -> Bool
+
+    /// Sends `request`. Calls `connected` once the connection to the server is up, when
+    /// `reportsConnection(for:)` says so; the caller enforces `request.connectTimeout` and `request.timeout`.
     func send(_ request: HTTPRequest, connected: @escaping @Sendable () -> Void) async throws -> HTTPResponse
 }
 
@@ -68,9 +72,9 @@ struct APIAnswer: Sendable {
 /// `URLSession`.
 ///
 /// `URLSession` reports no connection event: a request with a body counts as connected once its body
-/// starts flowing (the TCP and TLS handshakes are done), a request without one when its answer
-/// arrives. `WajubSession` measures the contract's two timeouts against that; URLSession's own
-/// timeouts are a backstop a few seconds longer.
+/// starts flowing (the TCP and TLS handshakes are done). A request without a body cannot be told
+/// apart from a slow answer, so only its whole-call timeout applies. `WajubSession` measures the
+/// contract's timeouts; URLSession's own are a backstop a few seconds longer.
 final class URLSessionTransport: HTTPTransport, @unchecked Sendable {
     private static let backstop: TimeInterval = 5
     private let progress = ProgressDelegate()
@@ -86,6 +90,19 @@ final class URLSessionTransport: HTTPTransport, @unchecked Sendable {
         return URLSession(configuration: configuration, delegate: progress, delegateQueue: nil)
     }()
     private let lock = NSLock()
+    private var created = false
+
+    deinit {
+        // A session with a delegate lives until it is invalidated: let running tasks finish, then go.
+        lock.lock()
+        let created = self.created
+        lock.unlock()
+        if created { session.finishTasksAndInvalidate() }
+    }
+
+    func reportsConnection(for request: HTTPRequest) -> Bool {
+        request.body?.isEmpty == false
+    }
 
     func send(_ request: HTTPRequest, connected: @escaping @Sendable () -> Void) async throws -> HTTPResponse {
         var urlRequest = URLRequest(url: request.url, timeoutInterval: request.timeout + URLSessionTransport.backstop)
@@ -127,6 +144,7 @@ final class URLSessionTransport: HTTPTransport, @unchecked Sendable {
     private func currentSession() -> URLSession {
         lock.lock()
         defer { lock.unlock() }
+        created = true
         return session
     }
 

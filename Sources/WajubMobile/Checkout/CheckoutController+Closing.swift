@@ -119,6 +119,9 @@ extension CheckoutController {
     /// of the cancel and its `redirect_url` is kept.
     func runCancel(reason: CancelReason) {
         guard cancelTask == nil else { return }
+        // Whoever asked (the X, a swipe, "Cancel payment"), nothing is paid while the cancel runs.
+        isCancelling = true
+        update()
         cancelTask = Task { [weak self] in
             guard let self else { return }
             let answer = try? await self.client.send(.cancel)

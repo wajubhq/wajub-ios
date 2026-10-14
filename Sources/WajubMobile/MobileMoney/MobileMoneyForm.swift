@@ -89,7 +89,7 @@ public struct MobileMoneyForm: Equatable, Sendable {
     /// Once the payer has picked by hand it stays shown, with their pick.
     public var isOperatorListVisible: Bool {
         guard operatorMode == .detect else { return true }
-        if listOpened || pickedByHand { return true }
+        if listOpened || pickedByHand || unavailableDetected != nil { return true }
         let enabled = enabledIds
         let national = data.nationalDigits(phone, country: country)
         let detected = detectedOperator
@@ -97,6 +97,13 @@ public struct MobileMoneyForm: Equatable, Sendable {
         if national.count >= 6 && !detectedOffered && enabled.count > 1 { return true }
         if detected != nil && choices.contains(where: { $0.isOperatorIndependent && $0.limit == nil }) { return true }
         return false
+    }
+
+    /// The operator the number belongs to when it cannot take this amount (out of its limits): the sheet
+    /// says so rather than quietly paying through another one.
+    public var unavailableDetected: OperatorChoice? {
+        guard let detected = detectedOperator else { return nil }
+        return choices.first { $0.id == detected && $0.limit != nil }
     }
 
     /// In `detect` mode, the operator shown inside the field: the detected one, or the only one the payer can use.

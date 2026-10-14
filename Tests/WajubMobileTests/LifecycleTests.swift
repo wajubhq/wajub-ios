@@ -43,6 +43,26 @@ final class LifecycleTests: XCTestCase {
         XCTAssertEqual(reason, .payerCancelled)
         XCTAssertNotNil(redirect, "redirect_url kept")
 
+        // The same while the X's own cancel runs.
+        let closing = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
+        let closingGate = Gate()
+        closing.transport.on("POST", "/pay/cancel", .gated(closingGate, .fixture("cancel-200")))
+        closing.transport.answer("process-processing-mobile-money-sandbox")
+        let closingController = await closing.start()
+        closingController.setPhone("670000000")
+        closingController.close()
+        await waitUntil("cancel sent") { closing.transport.requests("POST", "/pay/cancel").count == 1 }
+        XCTAssertTrue(closingController.isCancelling, "the X and Pay wait")
+        XCTAssertTrue(closingController.isWorking)
+        XCTAssertFalse(closingController.canCancelPayment)
+        closingController.submitMobileMoney()
+        await settle()
+        XCTAssertTrue(closing.processBodies().isEmpty, "nothing paid while the dismiss cancel runs")
+        XCTAssertTrue(closing.recorder.started.isEmpty)
+        closingGate.open()
+        await waitUntil("closed") { closingController.result != nil }
+        XCTAssertEqual(closingController.result?.status, "cancelled")
+
         // The host going away during the cancel settles at once; the cancel still reaches the API.
         let gone = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
         let goneGate = Gate()
@@ -291,6 +311,9 @@ final class LifecycleTests: XCTestCase {
         XCTAssertEqual(result, .cancelled(reason: .hostGone, redirectURL: nil))
         XCTAssertEqual(harness.recorder.events, ["cancel:host_gone", "complete:cancelled"])
         XCTAssertTrue(harness.transport.requests("GET", "/pay/session").isEmpty, "nothing loaded for a settled checkout")
+        XCTAssertFalse(Checkout.isPresenting, "the lock is free at once")
+        let next = try await Checkout.present(harness.makeController(), presenter: NoHostPresenter())
+        XCTAssertEqual(next, .cancelled(reason: .hostGone, redirectURL: nil), "and a new present() can follow")
     }
 
     /// ST-04 settles when the host goes away
@@ -324,6 +347,28 @@ final class LifecycleTests: XCTestCase {
         controller.start()
         controller.hostGone()
         XCTAssertEqual(controller.result, .cancelled(reason: .hostGone, redirectURL: nil))
+    }
+
+    /// ST-04 settles when the host goes away
+    @MainActor func test_ST_04_releasesTheCheckoutOnceSettled() async {
+        weak var client: WajubSession?
+        weak var settled: CheckoutController?
+        func run() async {
+            let harness = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
+            harness.transport.answer("process-processing-mobile-money-live", "status-processing", "broadcasting-auth-200")
+            let controller = await harness.start()
+            controller.setPhone("670000000")
+            controller.submitMobileMoney()
+            await waitUntil("watching") { controller.state == .approvalRequired }
+            await harness.advance(by: 5)
+            client = controller.client
+            settled = controller
+            controller.hostGone()
+        }
+        await run()
+        await settle()
+        XCTAssertNil(settled, "nothing keeps a settled checkout alive")
+        XCTAssertNil(client, "so its URLSession (invalidated when its transport goes) does not leak")
     }
 
     /// ST-05 rejects a second present

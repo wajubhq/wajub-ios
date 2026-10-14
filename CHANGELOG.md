@@ -29,9 +29,10 @@
   with nothing charged, failed, cancelled on the phone, expired.
 - Requests carry the device signals Wajub's fraud checks expect, a stable install fingerprint that
   is never derived from a hardware identifier, an `Idempotency-Key` that automatic retries reuse,
-  and per-call timeouts (10 s to connect). A payment whose answer never arrived is shown as in
-  progress, never as a failure; if it still has not started 60 s later, the sheet goes back to the
-  form and the next Pay reuses the same `Idempotency-Key`, so nothing is charged twice.
+  and per-call timeouts (10 s to connect, where the connection can be seen). A payment whose answer
+  never arrived is shown as in progress, never as a failure; if it still has not started 60 s later,
+  the sheet goes back to the form and the next Pay reuses the same `Idempotency-Key`, so nothing is
+  charged twice. Each submission sends a fresh Altcha solution when the payment asks for one.
 - `PresentOptions.appearance` takes Wajub.js's appearance object (presets, variables, light, dark
   or automatic scheme, your app's own theme with `inherit`), on top of the merchant's branding from
   the dashboard; the skeleton loader and `readyTimeout` with a Retry button.

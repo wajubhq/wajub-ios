@@ -263,5 +263,28 @@ final class ErrorTests: XCTestCase {
                        "a new challenge for the second submission")
         XCTAssertEqual(harness.transport.requests("GET", "/pay/session").count, 2)
         controller.hostGone()
+
+        // No fresh challenge (the session reload fails after its retries): nothing is sent, the sheet
+        // says so and Pay can be pressed again.
+        let offline = Harness(config: "sdk-config-cm-stripe")
+        offline.transport.on("GET", "/pay/session", .json(200, first), .failure(.network("offline")), .failure(.network("offline")),
+                             .failure(.network("offline")), .failure(.network("offline")), .json(200, second))
+        offline.transport.answer("process-failed-402")
+        let form = await offline.start()
+        form.setPhone("670000000")
+        form.submitMobileMoney()
+        await waitUntil("declined") { form.state == .failed }
+        form.tryAgain()
+        form.submitMobileMoney()
+        await offline.drive(until: "not sent") { form.banner != nil && !form.isBusy }
+        XCTAssertEqual(form.banner?.code, WajubError.Code.securityCheckFailed)
+        XCTAssertTrue(form.banner?.retryable ?? false)
+        XCTAssertEqual(form.state, .collectingDetails)
+        XCTAssertEqual(offline.processBodies().count, 1, "never sent without a fresh solution")
+        offline.transport.answer("process-processing-mobile-money-sandbox")
+        form.submitMobileMoney()
+        await waitUntil("sent") { offline.processBodies().count == 2 }
+        XCTAssertEqual(offline.processBodies()[1]["data"]?["altcha"]?["number"]?.int, 654)
+        form.hostGone()
     }
 }

@@ -90,6 +90,22 @@ final class MobileMoneyTests: XCTestCase {
                        "This number belongs to Orange Money. Pick Orange Money in the list, or enter a MTN MoMo number.")
     }
 
+    /// MM-03 matches the preselection vectors
+    func test_MM_03_saysWhenTheNumbersOperatorCannotTakeTheAmount() throws {
+        let narrow = try SessionResponse(json: Fixtures.body("session-ci-xof-wallets").setting(["channels", "1", "max_amount"], to: 1000))
+        var form = MobileMoneyForm(channels: narrow.channels.filter(\.isMobileMoney), config: Fixtures.config("sdk-config-ci-wallets"),
+                                   language: .fr, amount: 15000, options: MobileMoneyOptions(operatorMode: .detect), geoCountry: "CI")
+        XCTAssertNil(form.unavailableDetected)
+        form.setPhone("0501020304")
+        XCTAssertEqual(form.unavailableDetected?.id, "mtn", "an MTN number, MTN out of its limits")
+        XCTAssertTrue(form.isOperatorListVisible, "never another operator with the list hidden")
+        XCTAssertNotEqual(form.badgeChoice?.id, "mtn")
+        XCTAssertEqual(WajubStrings(.fr).operatorOutOfLimits("MTN MoMo", limit: WajubStrings(.fr).maximum("1 000 F CFA")),
+                       "MTN MoMo ne peut pas être utilisé pour ce montant (Maximum 1 000 F CFA). Choisissez un autre opérateur ou moyen de paiement.")
+        XCTAssertEqual(WajubStrings(.en).operatorOutOfLimits("MTN MoMo", limit: "Maximum XOF 1,000"),
+                       "MTN MoMo can't be used for this amount (Maximum XOF 1,000). Choose another operator or payment method.")
+    }
+
     /// MM-04 lists aggregate operators
     func test_MM_04_listsAggregateOperators() {
         let aggregate = makeForm("session-cm-aggregate")

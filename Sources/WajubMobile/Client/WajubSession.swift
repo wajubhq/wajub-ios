@@ -185,16 +185,22 @@ public final class WajubSession: @unchecked Sendable {
     }
 
     /// One HTTP request under the contract's two timeouts (README §2.4), measured on the SDK's clock:
-    /// not connected within `connectTimeout`, or not answered within `timeout`, is `TransportError.timeout`.
+    /// not connected within `connectTimeout` (when the transport can tell), or not answered within
+    /// `timeout`, is `TransportError.timeout`.
     func timedSend(_ request: HTTPRequest) async throws -> HTTPResponse {
         let transport = self.transport
         let clock = self.clock
         let connection = ConnectionFlag()
+        let watchesConnection = transport.reportsConnection(for: request)
         return try await withThrowingTaskGroup(of: HTTPResponse.self) { group in
             group.addTask {
                 try await transport.send(request, connected: { connection.set() })
             }
             group.addTask {
+                guard watchesConnection else {
+                    try await clock.sleep(seconds: request.timeout)
+                    throw TransportError.timeout
+                }
                 try await clock.sleep(seconds: request.connectTimeout)
                 guard connection.isSet else { throw TransportError.timeout }
                 try await clock.sleep(seconds: max(request.timeout - request.connectTimeout, 0))

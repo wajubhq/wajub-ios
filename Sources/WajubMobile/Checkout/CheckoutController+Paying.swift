@@ -22,6 +22,7 @@ extension CheckoutController {
             self.reusableKey = nil
         }
         attempt.phone = phone
+        attempt.priorErrorCode = lastErrorCode
         self.attempt = attempt
         isBusy = true
         banner = nil
@@ -32,7 +33,16 @@ extension CheckoutController {
         workTask = Task { [weak self] in
             guard let self else { return }
             var data = data
-            if let solution = await self.nextAltchaSolution() { data["altcha"] = solution.json }
+            switch await self.nextAltcha() {
+            case .off:
+                break
+            case .solved(let solution):
+                data["altcha"] = solution.json
+            case .unavailable:
+                guard self.isCurrent(key) else { return }
+                self.notSent(.catalogue(WajubError.Code.securityCheckFailed, self.language))
+                return
+            }
             data["_client"] = await self.client.device.clientSignals()
             // Solving and reading the device take time: nothing is sent once the sheet moved on.
             guard self.isCurrent(key) else { return }
@@ -121,9 +131,13 @@ extension CheckoutController {
         let error = WajubError.from(answer, phase: .payment, language: language)
         let body = answer.body.map(APIErrorBody.init(json:))
         if let transaction = body?.transaction { lastTransaction = transaction }
+        // A decline stays on the payment until the next try starts.
+        if answer.status == 402, let code = body?.errorCode { lastErrorCode = code }
         switch answer.status {
         case 400:
             attempt?.inFlight = false
+            // Still busy until the status says what happened: no Pay, no "Cancel payment" meanwhile.
+            isBusy = true
             rereadStatus(orFail: .catalogue(WajubError.Code.notProcessable, language))
         case 409 where body?.errorCode == WajubError.Code.paymentInProgress:
             // A charge is already running: wait for it, no error.
@@ -222,13 +236,36 @@ extension CheckoutController {
         altchaTask = Task.detached(priority: .userInitiated) { AltchaSolver.solve(challenge) }
     }
 
+    /// What the next submission sends for Altcha.
+    enum AltchaReadiness {
+        case off
+        case solved(AltchaSolution)
+        /// No fresh solution (the session could not be reloaded, or the challenge not solved): send nothing.
+        case unavailable
+    }
+
     /// A solution for one submission: a solved number is spent once, so the next submission reloads the
-    /// session for a new challenge.
-    func nextAltchaSolution() async -> AltchaSolution? {
-        guard session?.altcha != nil || altchaTask != nil else { return nil }
-        if altchaSpent { await renewAltcha() }
+    /// session for a new challenge first. While Altcha is on, nothing is sent without a fresh solution.
+    func nextAltcha() async -> AltchaReadiness {
+        guard session?.altcha != nil || altchaTask != nil else { return .off }
+        if altchaSpent {
+            guard await renewAltcha() else { return .unavailable }
+            if session?.altcha == nil { return .off }
+        }
+        guard let solution = await altchaTask?.value else { return .unavailable }
         altchaSpent = true
-        return await altchaTask?.value
+        return .solved(solution)
+    }
+
+    /// The submission could not be made (no fresh Altcha solution): back to the form, nothing sent,
+    /// and Pay can be pressed again.
+    func notSent(_ error: WajubError) {
+        isBusy = false
+        attempt = nil
+        banner = error
+        fieldErrors = [:]
+        update()
+        emit { try self.options.callbacks.onError?(error) }
     }
 
     /// The 422 that refuses a missing or wrong Altcha solution: its `altcha` validation key, else (as a
@@ -244,12 +281,16 @@ extension CheckoutController {
     }
 
     /// Reloads the session for a new challenge and solves it.
-    func renewAltcha() async {
+    /// Reloads the session (with the usual read retries) for a new challenge and solves it. `false` when
+    /// the session could not be reloaded.
+    @discardableResult
+    func renewAltcha() async -> Bool {
         guard let answer = try? await client.send(.session), answer.isSuccess, let body = answer.body,
-              let session = try? SessionResponse(json: body) else { return }
+              let session = try? SessionResponse(json: body) else { return false }
         self.session?.altcha = session.altcha
         altchaSpent = false
         if let challenge = session.altcha { solveAltcha(challenge) } else { altchaTask = nil }
+        return true
     }
 
     // MARK: Redirects (README §12)
@@ -371,6 +412,7 @@ extension CheckoutController {
                 }
             case 402, 422:
                 if let transaction = body?.transaction { self.lastTransaction = transaction }
+                if answer.status == 402, let code = body?.errorCode { self.lastErrorCode = code }
                 self.attempt?.inFlight = false
                 self.clientSessionFailed = true
                 self.fail(WajubError.from(answer, phase: .payment, language: self.language))
