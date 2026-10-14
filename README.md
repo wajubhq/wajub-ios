@@ -97,7 +97,8 @@ func pay(token: String, from viewController: UIViewController) async {
 }
 ```
 
-`present` resolves exactly once, when the sheet closes, with the same value `onComplete` receives.
+`present` resolves exactly once, when the sheet is gone, with the same value `onComplete` receives:
+another `present` can follow at once.
 
 ## Options
 
@@ -179,6 +180,12 @@ payer paid, fee included), `currency`, `method`, `status` (`"success"`), `timest
 Provider pages open in `SFSafariViewController` (card pages, 3-D Secure, client sessions) or are
 handed to iOS (`UIApplication.open`, wallet pages that open the wallet's app). When the payer comes
 back — Safari closed, or the app back from the background — the sheet checks the payment at once.
+
+A payment request that gets no answer (no connection, a timeout) is never shown as a failure: the
+sheet shows "Payment in progress" and watches the payment. If 60 s after the last try the payment
+still has not started, the request most likely never reached Wajub: the sheet goes back to the form
+with a connection error, and the next Pay sends the same `Idempotency-Key`, so a request that did
+arrive is answered again instead of charged twice.
 
 Operator logos load from `https` URLs; one that is missing or does not load (iOS does not draw SVG
 logos) is drawn as the operator's brand badge.
@@ -275,11 +282,14 @@ Return `nil` when the payer backs out. A thrown error is shown on the card form.
   contract's headers, device signals, timeouts, retries and `Idempotency-Key`, and returns the API's
   shapes and `ProcessOutcome`.
 - `CheckoutController` is the sheet's state machine without any UI: create it with
-  `CheckoutController(options:browser:)` (a `BrowserOpening` of yours), draw its `screen`, call its
+  `CheckoutController(options:browser:)` (a `BrowserOpening` of yours, whose `onClose` you call when
+  an in-app browser closes), draw its `screen`, call its
   actions (`selectMethod`, `setPhone`, `pickOperator`, `submitMobileMoney`, `submitCard`,
   `payWallet`, `submitStep`, `submitThreeDSCode`, `tryAgain`, `cancelPayment`, `dismiss`,
   `appWillEnterForeground`, `hostGone`…), and present it with
-  `Checkout.present(_:presenter:browser:)` and your own `CheckoutPresenting`.
+  `Checkout.present(_:presenter:browser:)` and your own `CheckoutPresenting` (call `dismiss`'s
+  `completion` once the sheet is gone). Both callbacks are `@MainActor @Sendable`, so they can go
+  into system completion handlers in a Swift 6 app.
 - `MobileMoneyData.shared` exposes the Mobile Money rules (national digits, validation, operator
   detection, E.164, formatting).
 
@@ -303,7 +313,12 @@ module elsewhere.
   (`docker run` works the same). Only the core is compiled and tested there: SwiftUI and UIKit do
   not exist on Linux, so the sheet is compiled by the macOS job of CI.
 - `.github/workflows/ci.yml` runs both: a macOS job (`swift test` and the iOS Simulator build) and a
-  Linux job (`swift test` in `swift:6.1`).
+  Linux job (`swift test` in `swift:6.1`, the core in Swift 6 language mode, and `ci/swift6-host`, a
+  small Swift 6 package that implements the SDK's protocols the way an app does).
+- Timeouts (connect 10 s, then 30 s or 60 s for the whole call) are measured on the SDK's own clock,
+  so the tests check them on a virtual clock. `URLSession` reports no connection event: a request
+  with a body counts as connected once its body starts flowing, one without a body when its answer
+  arrives.
 - `Tests/WajubMobileTests/Fixtures` and `Sources/WajubMobile/Resources/mobile-money.json` are copies
   of the shared contract, written by `sync-spec.sh ios` in the mobile SDKs' monorepo; never edit
   them by hand (`test_SY_01_usesTheSyncedSpecFiles` checks their checksums). Test fixtures are a

@@ -8,9 +8,10 @@
   Wajub.js 1.8: `PresentOptions`, `CheckoutCallbacks`, `CheckoutResult`, `CheckoutState`,
   `PaymentSuccess`, `WajubError` and `Appearance`.
 - `WajubCheckout.present(_:from:)` presents the sheet and resolves exactly once with a
-  `CheckoutResult`: `complete`, `processing`, `failed` or `cancelled`. Presenting a second sheet
-  while one is open throws `sheet_already_presented`; a sheet whose presenting screen goes away
-  resolves at once.
+  `CheckoutResult` (`complete`, `processing`, `failed` or `cancelled`) when the sheet is gone, so the
+  next `present` can follow at once. Presenting a second sheet while one is open throws
+  `sheet_already_presented`; a sheet with no screen to present from, or whose presenting screen goes
+  away, resolves at once (`host_gone`).
 - Mobile Money: country, number with its dial code formatted as you type, operator picker with
   logos or brand badges, the operators of an aggregate such as `cm.mobile`, detection of the
   operator from the number, a clear message when the number belongs to another operator, numbers
@@ -28,8 +29,9 @@
   with nothing charged, failed, cancelled on the phone, expired.
 - Requests carry the device signals Wajub's fraud checks expect, a stable install fingerprint that
   is never derived from a hardware identifier, an `Idempotency-Key` that automatic retries reuse,
-  and per-call timeouts. A payment whose answer never arrived is shown as in progress, never as a
-  failure.
+  and per-call timeouts (10 s to connect). A payment whose answer never arrived is shown as in
+  progress, never as a failure; if it still has not started 60 s later, the sheet goes back to the
+  form and the next Pay reuses the same `Idempotency-Key`, so nothing is charged twice.
 - `PresentOptions.appearance` takes Wajub.js's appearance object (presets, variables, light, dark
   or automatic scheme, your app's own theme with `inherit`), on top of the merchant's branding from
   the dashboard; the skeleton loader and `readyTimeout` with a Retry button.
