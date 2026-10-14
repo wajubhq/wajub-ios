@@ -1,0 +1,24 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/process",
+    "body": {
+      "channel": "cm.mtn",
+      "data": {}
+    }
+  },
+  "http_status": 422,
+  "body": {
+    "code": 422,
+    "status": "Unprocessable Content",
+    "message": "The phone field is required when account number is not present. (and 1 more error)",
+    "errors": {
+      "data.phone": [
+        "The phone field is required when account number is not present."
+      ],
+      "data.account_number": [
+        "The account number field is required when phone is not present."
+      ]
+    }
+  }
+}

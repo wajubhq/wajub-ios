@@ -1,0 +1,14 @@
+{
+  "_derived_from_code": true,
+  "_source": "api.wajub c02bc570 bootstrap/app.php:246-268 with APP_ENV=production (no `debug` block).",
+  "request": {
+    "method": "POST",
+    "path": "/pay/process"
+  },
+  "http_status": 500,
+  "body": {
+    "code": 500,
+    "status": "Internal Server Error",
+    "message": "An unexpected error occurred"
+  }
+}

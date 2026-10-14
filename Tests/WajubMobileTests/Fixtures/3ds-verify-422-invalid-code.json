@@ -1,0 +1,28 @@
+{
+  "_derived_from_code": true,
+  "_source": "api.wajub c02bc570 PaymentSessionController.php:1734-1742 + NormalizeUnprocessableResponse.php:53-68. Today this answer never leaves the API: ApiRequestLogMiddleware::extractErrorMessage() (ApiRequestLogMiddleware.php:207-211) throws on its `error` object and the payer gets 3ds-verify-500-invalid-code-api-bug.json instead.",
+  "request": {
+    "method": "POST",
+    "path": "/pay/3ds/verify",
+    "body": {
+      "three_ds_id": "5f0c2b1e-8d4a-4c3b-9e7f-1a2b3c4d5e6f",
+      "code": "000000"
+    }
+  },
+  "http_status": 422,
+  "body": {
+    "code": 422,
+    "status": "Unprocessable Content",
+    "error": {
+      "code": "invalid_code",
+      "message": "Invalid verification code.",
+      "retryable": true
+    },
+    "attempts_remaining": 2,
+    "errors": {
+      "request": [
+        "The request could not be processed."
+      ]
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/client-session",
+    "body": {
+      "channel": "card",
+      "email": "awa.ngono@example.com"
+    }
+  },
+  "http_status": 422,
+  "body": {
+    "code": 422,
+    "status": "Unprocessable Content",
+    "message": "Hosted client sessions are only available for live payments.",
+    "error_code": "client_session_unavailable",
+    "errors": {
+      "request": [
+        "Hosted client sessions are only available for live payments."
+      ]
+    }
+  }
+}

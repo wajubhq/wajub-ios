@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/process",
+    "body": {
+      "channel": "cm.mobile",
+      "data": {
+        "phone": "+237670000000"
+      }
+    }
+  },
+  "http_status": 410,
+  "body": {
+    "code": 410,
+    "status": "Gone",
+    "error_code": "session_terminal_expired",
+    "message": "This payment session has already been decided and is no longer available."
+  }
+}

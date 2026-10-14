@@ -1,0 +1,66 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/process",
+    "body": {
+      "channel": "card",
+      "data": {
+        "_client": {
+          "timezone": "Africa/Douala",
+          "language": "fr-CM",
+          "screen": "1080x2400",
+          "color_depth": 24,
+          "fingerprint": "9f2c4e1a7b3d5f60"
+        }
+      }
+    }
+  },
+  "http_status": 202,
+  "body": {
+    "code": 202,
+    "status": "Accepted",
+    "message": "Confirm your card payment.",
+    "action": "confirm_phone",
+    "transaction": {
+      "id": "trx_ConfirmPhone00000000",
+      "reference": "CMD-4172",
+      "trxref": "CMD-4172",
+      "amount": 5000,
+      "amount_total": 5000,
+      "amount_collected": 5000,
+      "amount_paid": 0,
+      "remaining_amount": 0,
+      "currency": "NGN",
+      "bearer": "merchant",
+      "fee": null,
+      "status": "processing",
+      "status_label": "Processing",
+      "sandbox": false,
+      "description": "Commande #4172",
+      "customer": {
+        "name": "Awa Ngono",
+        "email": "awa.ngono@example.com"
+      },
+      "receipt_url": null,
+      "expires_at": null,
+      "created_at": "2026-10-14T09:30:00+00:00",
+      "updated_at": "2026-10-14T09:30:00+00:00",
+      "terminal_at": null,
+      "processing_context": {
+        "channel_slug": "card",
+        "is_mobile_money": false,
+        "is_ussd": false,
+        "is_bank_transfer": false,
+        "payer_instruction": null,
+        "bank_transfer_account": null,
+        "action_url": null,
+        "three_ds_id": null,
+        "three_ds_method": null,
+        "masked_email": null,
+        "three_ds_timeout": null
+      }
+    },
+    "phone_id": "prc_7hQm2LxV9pR4sT1wYb3N",
+    "phone_instruction": "Please enter your phone number"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/birthday/verify",
+    "body": {
+      "birthday_id": "prc_xsUy9imlWt6kPDExnmnj",
+      "birthday": "21/04/1990"
+    }
+  },
+  "http_status": 422,
+  "body": {
+    "code": 422,
+    "status": "Unprocessable Content",
+    "message": "The birthday field must match the format Y-m-d.",
+    "errors": {
+      "birthday": [
+        "The birthday field must match the format Y-m-d."
+      ]
+    }
+  }
+}

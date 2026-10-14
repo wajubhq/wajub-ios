@@ -1,0 +1,39 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/client-session/complete",
+    "body": {
+      "client_session_id": "prc_LiwU1kVpLTGvYnHGi3O5"
+    }
+  },
+  "http_status": 402,
+  "body": {
+    "code": 402,
+    "status": "Payment Required",
+    "message": "This payment could not be completed. Try again or use another payment method.",
+    "error_code": "failed",
+    "transaction": {
+      "id": "trx_ClientSessN7aQ2LmX9k",
+      "reference": "CMD-4172",
+      "trxref": "CMD-4172",
+      "amount": 1000,
+      "amount_total": 1000,
+      "amount_collected": 0,
+      "amount_paid": 0,
+      "remaining_amount": 1000,
+      "currency": "NGN",
+      "bearer": "merchant",
+      "fee": null,
+      "status": "pending",
+      "status_label": "Pending",
+      "sandbox": false,
+      "description": "Commande #4172",
+      "customer": null,
+      "receipt_url": null,
+      "expires_at": null,
+      "created_at": "2026-10-14T09:30:00+00:00",
+      "updated_at": "2026-10-14T09:30:00+00:00",
+      "terminal_at": null
+    }
+  }
+}

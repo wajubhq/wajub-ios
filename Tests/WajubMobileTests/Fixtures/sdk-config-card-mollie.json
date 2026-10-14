@@ -1,0 +1,28 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/pay/sdk-config"
+  },
+  "http_status": 200,
+  "body": {
+    "code": 200,
+    "status": "OK",
+    "message": "SDK configuration retrieved",
+    "channels": {
+      "card": {
+        "available": true,
+        "provider": "mollie",
+        "sdk": "hosted_redirect",
+        "publishable_key": "pk_test_mollie",
+        "required_fields": [],
+        "client_session": false,
+        "inline": "mollie_components",
+        "testmode": true
+      }
+    },
+    "embed_allowed_origins": null,
+    "checkout_hosts": [
+      "checkout.wajub.test"
+    ]
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/client-session",
+    "body": {
+      "channel": "card",
+      "return_url": "https://shop.example.com/app-return"
+    }
+  },
+  "http_status": 202,
+  "body": {
+    "code": 202,
+    "status": "Accepted",
+    "message": "Complete the payment in Flutterwave's secure checkout.",
+    "action": "client_session",
+    "transaction": {
+      "id": "trx_ClientSessN7aQ2LmX9k",
+      "reference": "CMD-4172",
+      "trxref": "CMD-4172",
+      "amount": 1000,
+      "amount_total": 1000,
+      "amount_collected": 1000,
+      "amount_paid": 0,
+      "remaining_amount": 0,
+      "currency": "NGN",
+      "bearer": "merchant",
+      "fee": null,
+      "status": "processing",
+      "status_label": "Processing",
+      "sandbox": false,
+      "description": "Commande #4172",
+      "customer": {
+        "name": "Chidi Okafor",
+        "email": "chidi.okafor@example.com"
+      },
+      "receipt_url": null,
+      "expires_at": null,
+      "created_at": "2026-10-14T09:30:00+00:00",
+      "updated_at": "2026-10-14T09:30:00+00:00",
+      "terminal_at": null,
+      "processing_context": {
+        "channel_slug": "card",
+        "is_mobile_money": false,
+        "is_ussd": false,
+        "is_bank_transfer": false,
+        "payer_instruction": null,
+        "bank_transfer_account": null,
+        "action_url": null,
+        "three_ds_id": null,
+        "three_ds_method": null,
+        "masked_email": null,
+        "three_ds_timeout": null
+      }
+    },
+    "client_session": {
+      "id": "prc_7hQm2LxV9pR4sT1wYb3N",
+      "provider": "flutterwave",
+      "reference": "prc_7hQm2LxV9pR4sT1wYb3N",
+      "amount": 1000,
+      "currency": "NGN",
+      "hosted_url": "https://checkout.flutterwave.com/v3/hosted/pay/f1a2b3c4d5",
+      "public_key": "pk_test_xxx",
+      "encryption_key": "FLWSECK_TESTenc"
+    }
+  }
+}

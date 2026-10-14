@@ -1,0 +1,26 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/process",
+    "headers": {
+      "Idempotency-Key": "has a space"
+    },
+    "body": {
+      "channel": "cm.mtn",
+      "data": {
+        "phone": "+237670000000"
+      }
+    }
+  },
+  "http_status": 422,
+  "body": {
+    "code": 422,
+    "status": "Unprocessable Content",
+    "message": "The Idempotency-Key header format is invalid.",
+    "errors": {
+      "idempotency_key": [
+        "The Idempotency-Key header format is invalid."
+      ]
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "_derived_from_code": true,
+  "_source": "api.wajub c02bc570 PaymentProcessingService.php:221-235 + RestrictionGuard.php:129-184,270-279; `message` is the payer_message (buildProcessResponse :589). Other codes: merchant_restricted, payment_method_restricted, country_restricted, currency_restricted, limit_exceeded.",
+  "request": {
+    "method": "POST",
+    "path": "/pay/process",
+    "body": {
+      "channel": "cm.mobile",
+      "data": {
+        "phone": "+237677123456",
+        "country": "CM"
+      }
+    }
+  },
+  "http_status": 403,
+  "body": {
+    "code": 403,
+    "status": "Forbidden",
+    "message": "Mobile money is not available for this merchant.",
+    "error_code": "payment_method_restricted"
+  }
+}

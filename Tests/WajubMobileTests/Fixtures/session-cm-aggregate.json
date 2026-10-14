@@ -1,0 +1,167 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/pay/session",
+    "headers": {
+      "Accept-Language": "fr-CM,fr;q=0.9,en;q=0.8",
+      "X-Wajub-Client": "wajub-flutter/1.6.0 (android 15)"
+    }
+  },
+  "http_status": 200,
+  "body": {
+    "code": 200,
+    "status": "OK",
+    "message": "Payment session retrieved",
+    "transaction": {
+      "id": "trx_PVrU8x2kQ1mNa7Lb3cDe",
+      "reference": "CMD-4172",
+      "trxref": "CMD-4172",
+      "amount": 25000,
+      "amount_total": 25000,
+      "amount_collected": 0,
+      "amount_paid": 0,
+      "remaining_amount": 25000,
+      "currency": "XAF",
+      "bearer": "merchant",
+      "fee": null,
+      "status": "pending",
+      "status_label": "Pending",
+      "sandbox": false,
+      "description": "Commande #4172",
+      "customer": {
+        "name": "Awa Ngono",
+        "email": "awa.ngono@example.com"
+      },
+      "receipt_url": null,
+      "expires_at": "2026-10-14T09:30:00+00:00",
+      "created_at": "2026-10-14T09:30:00+00:00",
+      "updated_at": "2026-10-14T09:30:00+00:00",
+      "terminal_at": null
+    },
+    "tax": null,
+    "altcha": null,
+    "branding": {
+      "primary_color": "#0F766E",
+      "secondary_color": "#F0FDFA",
+      "background_color": "#FFFFFF",
+      "logo_url": "https://cdn.shop.example.com/brand/logo.png",
+      "logo_square_url": "https://cdn.shop.example.com/brand/logo-square.png",
+      "icon_url": "https://cdn.shop.example.com/brand/icon.png",
+      "custom_domain": null,
+      "business_name": "Boutique Akwa",
+      "layout": "classic",
+      "border_radius": "12px",
+      "font": "Poppins",
+      "appearance_mode": "light",
+      "density": "comfortable",
+      "cover_style": "contained",
+      "locale": "fr",
+      "custom_css": null,
+      "white_label": true,
+      "card.background_color": "#FFFFFF",
+      "card.border_color": "#E5E7EB",
+      "input_background_color": "#FFFFFF",
+      "input_border_color": "#D1D5DB",
+      "text_muted_color": "#6B7280",
+      "button_text_color": "#FFFFFF",
+      "success_color": "#16A34A",
+      "error_color": "#DC2626",
+      "shadow": "low",
+      "overlay_intensity": 40,
+      "tab_active_bg": "#0F766E",
+      "tab_active_text": "#FFFFFF",
+      "tab_inactive_bg": "#F3F4F6",
+      "tab_inactive_text": "#374151",
+      "font_weight_heading": 600,
+      "font_weight_body": "400",
+      "step_active_bg": null,
+      "step_done_bg": null,
+      "step_inactive_bg": null,
+      "accordion_header_bg": null,
+      "accordion_body_bg": null,
+      "separator_color": "#E5E7EB"
+    },
+    "checkout_fields": [
+      {
+        "id": "5f0c2b1e-8d4a-4c3b-9e7f-1a2b3c4d5e6f",
+        "type": "text",
+        "label": "Numéro de commande interne",
+        "placeholder": "ex. A-1029",
+        "required": false,
+        "options": []
+      }
+    ],
+    "channels": [
+      {
+        "id": "card",
+        "slug": "card",
+        "name": "Carte bancaire",
+        "name.fr": "Carte bancaire",
+        "type": "card",
+        "logo": "https://assets.wajub.com/img/channels/card.svg",
+        "countries": [],
+        "min_amount": null,
+        "max_amount": null,
+        "currency": "XAF",
+        "stripe_key": "pk_live_51Hx4mPLACEHOLDER"
+      },
+      {
+        "id": "cm.mobile",
+        "slug": "cm.mobile",
+        "name": "Mobile Money",
+        "name.fr": "Mobile Money",
+        "type": "mobile_money",
+        "logo": "https://assets.wajub.com/img/channels/momo.svg",
+        "countries": [
+          "CM"
+        ],
+        "min_amount": 100,
+        "max_amount": 500000,
+        "currency": "XAF",
+        "operators": [
+          {
+            "slug": "cm.mtn",
+            "operator": "mtn",
+            "name": "MTN Mobile Money",
+            "logo": "https://assets.wajub.com/img/channels/momo.svg"
+          },
+          {
+            "slug": "cm.orange",
+            "operator": "orange",
+            "name": "Orange Money",
+            "logo": "https://assets.wajub.com/img/channels/om.svg"
+          }
+        ]
+      }
+    ],
+    "locale": "fr",
+    "base_currency": "XAF",
+    "currency_conversion": {
+      "enabled": false,
+      "default_currency": "XAF",
+      "currencies": []
+    },
+    "return_url": "https://shop.example.com/payment/return?reference=trx_PVrU8x2kQ1mNa7Lb3cDe&status=succeeded&trxref=CMD-4172",
+    "cancel_url": "https://shop.example.com/payment/return?reference=trx_PVrU8x2kQ1mNa7Lb3cDe&status=cancelled&trxref=CMD-4172",
+    "payment_limits": {
+      "min_amount": 25,
+      "max_amount": 2000000,
+      "currency": "XAF"
+    },
+    "mobile_money_max_per_tx": {
+      "max_per_tx": 500000,
+      "currency": "XAF"
+    },
+    "geo_country": "CM",
+    "features": {
+      "download_receipt": true
+    },
+    "echo": {
+      "key": "wajub-app-key",
+      "ws_host": "wss://ws.wajub.com",
+      "ws_port": 443,
+      "channel_prefix": "private-payment.",
+      "broadcaster": "pusher"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/cancel"
+  },
+  "http_status": 400,
+  "body": {
+    "code": 400,
+    "status": "Bad Request",
+    "message": "Transaction cannot be cancelled"
+  }
+}

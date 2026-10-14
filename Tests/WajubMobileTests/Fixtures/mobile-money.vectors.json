@@ -1,0 +1,380 @@
+{
+  "schema_version": 1,
+  "algorithms": "data/mobile-money.json `algorithms`",
+  "numbers": [
+    {
+      "input": "677 12 34 56",
+      "country": "CM",
+      "national_digits": "677123456",
+      "valid": true,
+      "detected_operator": "mtn",
+      "e164": "+237677123456",
+      "formatted": "67 71 23 45 6"
+    },
+    {
+      "input": "+237 691234567",
+      "country": "CM",
+      "national_digits": "691234567",
+      "valid": true,
+      "detected_operator": "orange",
+      "e164": "+237691234567",
+      "formatted": "23 76 91 23 45 67"
+    },
+    {
+      "input": "0651234567",
+      "country": "CM",
+      "national_digits": "651234567",
+      "valid": true,
+      "detected_operator": "mtn",
+      "e164": "+237651234567",
+      "formatted": "06 51 23 45 67"
+    },
+    {
+      "input": "655123456",
+      "country": "CM",
+      "national_digits": "655123456",
+      "valid": true,
+      "detected_operator": "orange",
+      "e164": "+237655123456",
+      "formatted": "65 51 23 45 6"
+    },
+    {
+      "input": "67712345",
+      "country": "CM",
+      "national_digits": "67712345",
+      "valid": false,
+      "detected_operator": "mtn",
+      "e164": "+23767712345",
+      "formatted": "67 71 23 45"
+    },
+    {
+      "input": "07 01 02 03 04",
+      "country": "CI",
+      "national_digits": "701020304",
+      "valid": true,
+      "detected_operator": "orange",
+      "e164": "+2250701020304",
+      "formatted": "07 01 02 03 04"
+    },
+    {
+      "input": "+2250501020304",
+      "country": "CI",
+      "national_digits": "501020304",
+      "valid": true,
+      "detected_operator": "mtn",
+      "e164": "+2250501020304",
+      "formatted": "22 50 50 10 20 30 4"
+    },
+    {
+      "input": "771234567",
+      "country": "SN",
+      "national_digits": "771234567",
+      "valid": true,
+      "detected_operator": "orange",
+      "e164": "+221771234567",
+      "formatted": "77 12 34 56 7"
+    },
+    {
+      "input": "761234567",
+      "country": "SN",
+      "national_digits": "761234567",
+      "valid": true,
+      "detected_operator": "free",
+      "e164": "+221761234567",
+      "formatted": "76 12 34 56 7"
+    },
+    {
+      "input": "701234567",
+      "country": "SN",
+      "national_digits": "701234567",
+      "valid": true,
+      "detected_operator": "orange",
+      "e164": "+221701234567",
+      "formatted": "70 12 34 56 7"
+    },
+    {
+      "input": "0244123456",
+      "country": "GH",
+      "national_digits": "244123456",
+      "valid": true,
+      "detected_operator": "mtn",
+      "e164": "+233244123456",
+      "formatted": "02 44 12 34 56"
+    },
+    {
+      "input": "0271234567",
+      "country": "GH",
+      "national_digits": "271234567",
+      "valid": true,
+      "detected_operator": "airteltigo",
+      "e164": "+233271234567",
+      "formatted": "02 71 23 45 67"
+    },
+    {
+      "input": "08031234567",
+      "country": "NG",
+      "national_digits": "8031234567",
+      "valid": true,
+      "detected_operator": "mtn",
+      "e164": "+2348031234567",
+      "formatted": "08 03 12 34 56 7"
+    },
+    {
+      "input": "0712345678",
+      "country": "KE",
+      "national_digits": "712345678",
+      "valid": true,
+      "detected_operator": "mpesa",
+      "e164": "+254712345678",
+      "formatted": "07 12 34 56 78"
+    },
+    {
+      "input": "0741234567",
+      "country": "TZ",
+      "national_digits": "741234567",
+      "valid": true,
+      "detected_operator": "mpesa",
+      "e164": "+255741234567",
+      "formatted": "07 41 23 45 67"
+    },
+    {
+      "input": "0701234567",
+      "country": "UG",
+      "national_digits": "701234567",
+      "valid": true,
+      "detected_operator": "airtel",
+      "e164": "+256701234567",
+      "formatted": "07 01 23 45 67"
+    },
+    {
+      "input": "0190123456",
+      "country": "BJ",
+      "national_digits": "190123456",
+      "valid": true,
+      "detected_operator": null,
+      "e164": "+229190123456",
+      "formatted": "01 90 12 34 56"
+    },
+    {
+      "input": "0812345678",
+      "country": "CD",
+      "national_digits": "812345678",
+      "valid": true,
+      "detected_operator": null,
+      "e164": "+243812345678",
+      "formatted": "08 12 34 56 78"
+    },
+    {
+      "input": "90123456",
+      "country": "NE",
+      "national_digits": "90123456",
+      "valid": true,
+      "detected_operator": null,
+      "e164": "+22790123456",
+      "formatted": "90 12 34 56"
+    },
+    {
+      "input": "123",
+      "country": "ML",
+      "national_digits": "123",
+      "valid": false,
+      "detected_operator": null,
+      "e164": "+223123",
+      "formatted": "12 3"
+    },
+    {
+      "input": "+237670000000",
+      "country": "CM",
+      "national_digits": "670000000",
+      "valid": true,
+      "detected_operator": "mtn",
+      "e164": "+237670000000",
+      "formatted": "23 76 70 00 00 00"
+    },
+    {
+      "input": "",
+      "country": "CM",
+      "national_digits": "",
+      "valid": false,
+      "detected_operator": null,
+      "e164": "+237",
+      "formatted": ""
+    }
+  ],
+  "validation_and_mismatch": [
+    {
+      "country": "CM",
+      "choices": [
+        "mtn",
+        "orange"
+      ],
+      "selected": "orange",
+      "phone": "677123456",
+      "expected": "operator_mismatch",
+      "detected": "mtn"
+    },
+    {
+      "country": "CM",
+      "choices": [
+        "mtn",
+        "orange"
+      ],
+      "selected": "mtn",
+      "phone": "677123456",
+      "expected": null,
+      "detected": "mtn"
+    },
+    {
+      "country": "CI",
+      "choices": [
+        "mtn",
+        "orange",
+        "moov",
+        "wave"
+      ],
+      "selected": "wave",
+      "phone": "0701020304",
+      "expected": null,
+      "detected": "orange",
+      "why": "wave is operator-independent"
+    },
+    {
+      "country": "CI",
+      "choices": [
+        "mtn",
+        "orange",
+        "moov",
+        "wave"
+      ],
+      "selected": "mtn",
+      "phone": "0701020304",
+      "expected": "operator_mismatch",
+      "detected": "orange"
+    },
+    {
+      "country": "SN",
+      "choices": [
+        "orange",
+        "wave"
+      ],
+      "selected": "orange",
+      "phone": "761234567",
+      "expected": null,
+      "detected": "free",
+      "why": "free is not among the choices"
+    },
+    {
+      "country": "BJ",
+      "choices": [
+        "mtn",
+        "moov"
+      ],
+      "selected": "moov",
+      "phone": "0190123456",
+      "expected": null,
+      "detected": null,
+      "why": "no prefix rules for BJ"
+    },
+    {
+      "country": "CM",
+      "choices": [
+        "mtn",
+        "orange"
+      ],
+      "selected": "orange",
+      "phone": "",
+      "expected": "phone_required",
+      "detected": null
+    },
+    {
+      "country": "CM",
+      "choices": [
+        "mtn",
+        "orange"
+      ],
+      "selected": "orange",
+      "phone": "6771234",
+      "expected": "invalid_phone",
+      "detected": "mtn",
+      "why": "length is checked before the mismatch"
+    }
+  ],
+  "preselection": [
+    {
+      "country": "CM",
+      "choices": [
+        "mtn",
+        "orange"
+      ],
+      "picked_by_hand": null,
+      "phone": "691234567",
+      "expected_selection": "orange"
+    },
+    {
+      "country": "CM",
+      "choices": [
+        "mtn",
+        "orange"
+      ],
+      "picked_by_hand": "mtn",
+      "phone": "691234567",
+      "expected_selection": "mtn",
+      "why": "a manual pick is never overridden (then operator_mismatch on submit)"
+    },
+    {
+      "country": "CI",
+      "choices": [
+        "mtn",
+        "orange",
+        "moov",
+        "wave"
+      ],
+      "picked_by_hand": "wave",
+      "phone": "0701020304",
+      "expected_selection": "wave"
+    },
+    {
+      "country": "SN",
+      "choices": [
+        "orange",
+        "wave"
+      ],
+      "picked_by_hand": null,
+      "phone": "761234567",
+      "expected_selection": "orange",
+      "why": "detected free is not offered: the default first choice stays"
+    }
+  ],
+  "operator_hint": [
+    {
+      "channel": "cm.mobile",
+      "selected": "mtn",
+      "picked_by_hand": false,
+      "detected": "mtn",
+      "send_operator": "mtn"
+    },
+    {
+      "channel": "cm.mobile",
+      "selected": "orange",
+      "picked_by_hand": true,
+      "detected": null,
+      "send_operator": "orange"
+    },
+    {
+      "channel": "cm.mobile",
+      "selected": "mtn",
+      "picked_by_hand": false,
+      "detected": null,
+      "send_operator": null,
+      "why": "a default the payer never touched is not sent"
+    },
+    {
+      "channel": "ci.orange",
+      "selected": "orange",
+      "picked_by_hand": true,
+      "detected": "orange",
+      "send_operator": null,
+      "why": "not an aggregate"
+    }
+  ]
+}

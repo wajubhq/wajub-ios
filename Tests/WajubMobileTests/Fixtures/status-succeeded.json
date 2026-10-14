@@ -1,0 +1,16 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/pay/status"
+  },
+  "http_status": 200,
+  "body": {
+    "code": 200,
+    "status": "OK",
+    "message": "Payment status retrieved",
+    "transaction": {
+      "reference": "trx_TerminalSucc0000000000",
+      "status": "succeeded"
+    }
+  }
+}

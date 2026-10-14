@@ -1,0 +1,21 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/3ds/verify",
+    "body": {
+      "three_ds_id": "759e9171-ea0d-4ad9-82d0-7509197af8c1",
+      "code": "000000"
+    }
+  },
+  "http_status": 500,
+  "body": {
+    "code": 500,
+    "status": "Internal Server Error",
+    "message": "App\\Http\\Middleware\\ApiRequestLogMiddleware::extractErrorMessage(): Return value must be of type ?string, array returned",
+    "debug": {
+      "message": "App\\Http\\Middleware\\ApiRequestLogMiddleware::extractErrorMessage(): Return value must be of type ?string, array returned",
+      "file": "/var/www/api/app/Http/Middleware/ApiRequestLogMiddleware.php",
+      "line": 211
+    }
+  }
+}

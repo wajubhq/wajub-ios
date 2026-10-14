@@ -1,0 +1,27 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/address/verify",
+    "body": {
+      "address_id": "prc_xsUy9imlWt6kPDExnmnj",
+      "address": "12 Admiralty Way"
+    }
+  },
+  "http_status": 422,
+  "body": {
+    "code": 422,
+    "status": "Unprocessable Content",
+    "message": "The city field is required. (and 2 more errors)",
+    "errors": {
+      "city": [
+        "The city field is required."
+      ],
+      "state": [
+        "The state field is required."
+      ],
+      "zip_code": [
+        "The zip code field is required."
+      ]
+    }
+  }
+}

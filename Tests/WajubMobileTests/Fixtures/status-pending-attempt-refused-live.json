@@ -1,0 +1,18 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/pay/status"
+  },
+  "http_status": 200,
+  "body": {
+    "code": 200,
+    "status": "OK",
+    "message": "Payment status retrieved",
+    "transaction": {
+      "reference": "trx_Declined000000000000",
+      "status": "pending",
+      "error_code": "insufficient_funds",
+      "payer_message": "This payment could not be completed. Try again or use another payment method."
+    }
+  }
+}

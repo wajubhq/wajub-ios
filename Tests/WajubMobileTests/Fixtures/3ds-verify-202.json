@@ -1,0 +1,16 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/3ds/verify",
+    "body": {
+      "three_ds_id": "759e9171-ea0d-4ad9-82d0-7509197af8c1",
+      "code": "123456"
+    }
+  },
+  "http_status": 200,
+  "body": {
+    "code": 202,
+    "status": "Accepted",
+    "message": "Verification successful. Processing payment."
+  }
+}

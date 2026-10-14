@@ -1,0 +1,236 @@
+import Foundation
+
+/// The sheet's state: Wajub.js's 17 `CheckoutState` names, exactly.
+public enum CheckoutState: String, Sendable, CaseIterable {
+    case initiated = "INITIATED"
+    case collectingDetails = "COLLECTING_DETAILS"
+    case processing = "PROCESSING"
+    case otpRequired = "OTP_REQUIRED"
+    case pinRequired = "PIN_REQUIRED"
+    case phoneRequired = "PHONE_REQUIRED"
+    case birthdayRequired = "BIRTHDAY_REQUIRED"
+    case addressRequired = "ADDRESS_REQUIRED"
+    case threeDSRequired = "3DS_REQUIRED"
+    case ussdRequired = "USSD_REQUIRED"
+    case approvalRequired = "APPROVAL_REQUIRED"
+    case verifying = "VERIFYING"
+    case pending = "PENDING"
+    case success = "SUCCESS"
+    case failed = "FAILED"
+    case expired = "EXPIRED"
+    case cancelled = "CANCELLED"
+}
+
+/// Wajub.js's `PaymentSuccess`. Confirm the payment server-side (`GET /payments/{id}` or the
+/// `payment.succeeded` webhook) before you deliver.
+public struct PaymentSuccess: Equatable, Sendable {
+    /// `transaction.id`.
+    public var id: String
+    /// The merchant's reference.
+    public var reference: String?
+    /// `amount_total`, major units.
+    public var amount: Double
+    public var currency: String
+    /// `mobile_money`, `card`, `wallet`, or `unknown` when the session was already paid at load.
+    public var method: String
+    /// Always `"success"`.
+    public var status: String { "success" }
+    /// ISO 8601: `terminal_at`, else `updated_at`, else now.
+    public var timestamp: String
+    public var receiptURL: String?
+
+    public init(id: String, reference: String?, amount: Double, currency: String, method: String, timestamp: String, receiptURL: String?) {
+        self.id = id
+        self.reference = reference
+        self.amount = amount
+        self.currency = currency
+        self.method = method
+        self.timestamp = timestamp
+        self.receiptURL = receiptURL
+    }
+
+    init(transaction: SessionTransaction, method: String, now: Date) {
+        let formatter = ISO8601DateFormatter()
+        self.init(id: transaction.id, reference: transaction.reference, amount: transaction.amountTotal,
+                  currency: transaction.currency, method: method,
+                  timestamp: transaction.terminalAt ?? transaction.updatedAt ?? formatter.string(from: now),
+                  receiptURL: transaction.receiptURL)
+    }
+}
+
+/// Why the sheet closed as `cancelled`.
+public enum CancelReason: String, Sendable {
+    /// "Cancel payment".
+    case payerCancelled = "payer_cancelled"
+    /// A swipe down or the close button before any attempt.
+    case dismissed
+    /// The presenting screen went away before any attempt.
+    case hostGone = "host_gone"
+}
+
+/// What `present()` resolves with, exactly once (states.md §4).
+public enum CheckoutResult: Equatable, Sendable {
+    /// The sheet closed after `SUCCESS`.
+    case complete(payment: PaymentSuccess, transaction: SessionTransaction?)
+    /// The sheet closed while an attempt was running (money may still move), or the watch reached its 15-minute cap.
+    case processing(transaction: SessionTransaction?)
+    /// The sheet closed on `FAILED`, `EXPIRED`, a load error, or a payment cancelled elsewhere.
+    case failed(error: WajubError, transaction: SessionTransaction?)
+    /// "Cancel payment", a dismiss before any attempt, or the host going away before any attempt.
+    case cancelled(reason: CancelReason, redirectURL: String?)
+
+    /// `complete`, `processing`, `failed` or `cancelled`.
+    public var status: String {
+        switch self {
+        case .complete: return "complete"
+        case .processing: return "processing"
+        case .failed: return "failed"
+        case .cancelled: return "cancelled"
+        }
+    }
+}
+
+public struct ReadyEvent: Equatable, Sendable {
+    public var sessionId: String
+    /// `sandbox` or `live`.
+    public var environment: String
+    public var amount: Double
+    public var currency: String
+    /// The slugs of the channels shown.
+    public var methods: [String]
+}
+
+public struct StateChangeEvent: Equatable, Sendable {
+    public var state: CheckoutState
+    /// `mobile_money`, `card`, `wallet` or `unknown`.
+    public var method: String?
+}
+
+public struct PaymentStartedEvent: Equatable, Sendable {
+    public var method: String
+    public var channel: String
+}
+
+/// Wajub.js's redirect event: the SDK is about to open `url` in the system browser.
+public struct RedirectEvent: Equatable, Sendable {
+    public var url: String
+    /// Always `"GET"`.
+    public var method: String { "GET" }
+}
+
+public struct CancelEvent: Equatable, Sendable {
+    public var reason: CancelReason
+    public var redirectURL: String?
+}
+
+/// The checkout's callbacks, all optional, all called on the main thread in this order:
+/// `onReady` → `onStateChange`… → (`onPaymentStarted`, `onRedirect`) → `onSuccess`/`onError`/`onCancel`
+/// → `onComplete` exactly once. A callback that throws is caught and logged; the sheet carries on.
+public struct CheckoutCallbacks {
+    public var onReady: (@MainActor (ReadyEvent) throws -> Void)?
+    public var onStateChange: (@MainActor (StateChangeEvent) throws -> Void)?
+    public var onLoadError: (@MainActor (WajubError) throws -> Void)?
+    public var onPaymentStarted: (@MainActor (PaymentStartedEvent) throws -> Void)?
+    public var onRedirect: (@MainActor (RedirectEvent) throws -> Void)?
+    public var onSuccess: (@MainActor (PaymentSuccess) throws -> Void)?
+    public var onError: (@MainActor (WajubError) throws -> Void)?
+    public var onCancel: (@MainActor (CancelEvent) throws -> Void)?
+    public var onComplete: (@MainActor (CheckoutResult) throws -> Void)?
+
+    public init(onReady: (@MainActor (ReadyEvent) throws -> Void)? = nil,
+                onStateChange: (@MainActor (StateChangeEvent) throws -> Void)? = nil,
+                onLoadError: (@MainActor (WajubError) throws -> Void)? = nil,
+                onPaymentStarted: (@MainActor (PaymentStartedEvent) throws -> Void)? = nil,
+                onRedirect: (@MainActor (RedirectEvent) throws -> Void)? = nil,
+                onSuccess: (@MainActor (PaymentSuccess) throws -> Void)? = nil,
+                onError: (@MainActor (WajubError) throws -> Void)? = nil,
+                onCancel: (@MainActor (CancelEvent) throws -> Void)? = nil,
+                onComplete: (@MainActor (CheckoutResult) throws -> Void)? = nil) {
+        self.onReady = onReady
+        self.onStateChange = onStateChange
+        self.onLoadError = onLoadError
+        self.onPaymentStarted = onPaymentStarted
+        self.onRedirect = onRedirect
+        self.onSuccess = onSuccess
+        self.onError = onError
+        self.onCancel = onCancel
+        self.onComplete = onComplete
+    }
+}
+
+/// `PresentOptions.realtime`: another Pusher-protocol host (a self-hosted Reverb or Soketi), or none.
+public struct RealtimeOptions: Equatable, Sendable {
+    public var enabled: Bool
+    public var host: String?
+    public var port: Int?
+    public var tls: Bool?
+
+    public init(enabled: Bool = true, host: String? = nil, port: Int? = nil, tls: Bool? = nil) {
+        self.enabled = enabled
+        self.host = host
+        self.port = port
+        self.tls = tls
+    }
+}
+
+/// What `present()` takes (`types.ts` `PresentOptions`).
+public struct PresentOptions {
+    /// The payment's `authorization_token`, from your server.
+    public var sessionToken: String
+    /// `fr` or `en`; else the session's locale, else the device's.
+    public var locale: String?
+    public var appearance: Appearance?
+    public var loader: LoaderStyle
+    /// Milliseconds before an unready sheet reports `ready_timeout`; `0` disables it.
+    public var readyTimeout: Int
+    /// An `https` universal link back into your app, sent as `return_url` to provider pages.
+    public var returnURL: String?
+    public var mobileMoney: MobileMoneyOptions
+    /// Overrides the session's realtime host, or turns realtime off.
+    public var realtime: RealtimeOptions?
+    /// A dismiss before any attempt cancels the payment (`POST /pay/cancel`). Default `true`.
+    public var cancelOnDismiss: Bool
+    /// Milliseconds before the success screen closes itself; `0` keeps it. Default 3000.
+    public var autoCloseSuccess: Int
+    public var callbacks: CheckoutCallbacks
+    /// Collects cards for Stripe (`stripe_elements`). Without one, a Stripe card channel is not offered.
+    public var cardCollector: CardCollector?
+
+    public init(sessionToken: String, locale: String? = nil, appearance: Appearance? = nil, loader: LoaderStyle = .skeleton,
+                readyTimeout: Int = 15_000, returnURL: String? = nil, mobileMoney: MobileMoneyOptions = MobileMoneyOptions(),
+                realtime: RealtimeOptions? = nil, cancelOnDismiss: Bool = true, autoCloseSuccess: Int = 3_000,
+                callbacks: CheckoutCallbacks = CheckoutCallbacks(), cardCollector: CardCollector? = nil) {
+        self.sessionToken = sessionToken
+        self.locale = locale
+        self.appearance = appearance
+        self.loader = loader
+        self.readyTimeout = readyTimeout
+        self.returnURL = returnURL
+        self.mobileMoney = mobileMoney
+        self.realtime = realtime
+        self.cancelOnDismiss = cancelOnDismiss
+        self.autoCloseSuccess = autoCloseSuccess
+        self.callbacks = callbacks
+        self.cardCollector = cardCollector
+    }
+}
+
+/// What a card collector receives.
+public struct CardCollectionRequest: Equatable, Sendable {
+    /// The provider's publishable key, from sdk-config (Stripe: `pk_…`).
+    public var publishableKey: String
+    public var amount: Double
+    public var currency: String
+    public var customerEmail: String?
+    public var customerName: String?
+    /// The sheet's language.
+    public var language: WajubLanguage
+}
+
+/// Collects a card with a provider SDK the host ships (Stripe), so WajubMobile does not depend on it.
+///
+/// Implement it with Stripe's card field and `STPAPIClient.createPaymentMethod` and return the
+/// `pm_…` id; the sheet sends it to Wajub. Return `nil` when the payer backs out.
+public protocol CardCollector: AnyObject {
+    @MainActor func collectPaymentMethod(_ request: CardCollectionRequest) async throws -> String?
+}

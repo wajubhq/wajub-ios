@@ -1,0 +1,12 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/pay/session"
+  },
+  "http_status": 401,
+  "body": {
+    "code": 401,
+    "status": "Unauthorized",
+    "message": "Invalid or expired payment session token."
+  }
+}

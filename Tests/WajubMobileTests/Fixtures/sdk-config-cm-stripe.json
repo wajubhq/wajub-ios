@@ -1,0 +1,48 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/pay/sdk-config"
+  },
+  "http_status": 200,
+  "body": {
+    "code": 200,
+    "status": "OK",
+    "message": "SDK configuration retrieved",
+    "channels": {
+      "cm.mtn": {
+        "available": true,
+        "provider": "system",
+        "sdk": "form",
+        "publishable_key": null,
+        "required_fields": [
+          "phone"
+        ],
+        "client_session": false
+      },
+      "cm.orange": {
+        "available": true,
+        "provider": "system",
+        "sdk": "form",
+        "publishable_key": null,
+        "required_fields": [
+          "phone"
+        ],
+        "client_session": false
+      },
+      "card": {
+        "available": true,
+        "provider": "stripe",
+        "sdk": "stripe_elements",
+        "publishable_key": "pk_live_51Hx4mPLACEHOLDER",
+        "required_fields": [
+          "payment_method_id"
+        ],
+        "client_session": false
+      }
+    },
+    "embed_allowed_origins": null,
+    "checkout_hosts": [
+      "checkout.wajub.test"
+    ]
+  }
+}
