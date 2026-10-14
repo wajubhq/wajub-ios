@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Core and contract tests
+        run: swift test
+      # The SwiftUI sheet only builds against the iOS SDK.
+      - name: Build the sheet for iOS
+        run: xcodebuild -scheme WajubMobile-Package -destination 'generic/platform=iOS Simulator' build
+
+  linux:
+    runs-on: ubuntu-latest
+    container: swift:6.1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Core and contract tests
+        run: swift test
