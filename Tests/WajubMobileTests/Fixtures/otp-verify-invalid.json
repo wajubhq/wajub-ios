@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/otp/verify",
+    "body": {
+      "otp_id": "prc_gB5M7pD3XPeBGI8msYNJ",
+      "code": "000000"
+    }
+  },
+  "http_status": 200,
+  "body": {
+    "status": "failed",
+    "attempts_remaining": 2,
+    "error": {
+      "code": "invalid_otp",
+      "message": "This verification could not be completed. Check the information and try again."
+    }
+  }
+}

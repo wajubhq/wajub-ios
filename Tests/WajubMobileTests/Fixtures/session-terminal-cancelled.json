@@ -1,0 +1,106 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/pay/session"
+  },
+  "http_status": 200,
+  "body": {
+    "code": 200,
+    "status": "OK",
+    "message": "Payment session retrieved",
+    "transaction": {
+      "id": "trx_TerminalCanc0000000000",
+      "reference": "CMD-4172",
+      "trxref": "CMD-4172",
+      "amount": 25000,
+      "amount_total": 25000,
+      "amount_collected": 0,
+      "amount_paid": 0,
+      "remaining_amount": 25000,
+      "currency": "XAF",
+      "bearer": "merchant",
+      "fee": null,
+      "status": "cancelled",
+      "status_label": "Cancelled",
+      "sandbox": false,
+      "description": "Commande #4172",
+      "customer": null,
+      "receipt_url": null,
+      "expires_at": null,
+      "created_at": "2026-10-14T09:30:00+00:00",
+      "updated_at": "2026-10-14T09:30:00+00:00",
+      "terminal_at": "2026-10-14T09:30:00+00:00"
+    },
+    "tax": null,
+    "altcha": null,
+    "branding": {
+      "primary_color": null,
+      "secondary_color": null,
+      "background_color": null,
+      "logo_url": null,
+      "logo_square_url": null,
+      "icon_url": null,
+      "custom_domain": null,
+      "business_name": "Boutique Akwa SARL",
+      "layout": "design1",
+      "border_radius": "8px",
+      "font": "Inter",
+      "locale": null,
+      "custom_css": null,
+      "white_label": false,
+      "card.background_color": null,
+      "card.border_color": null,
+      "input_background_color": null,
+      "input_border_color": null,
+      "text_muted_color": null,
+      "button_text_color": null,
+      "success_color": null,
+      "error_color": null,
+      "shadow": null,
+      "overlay_intensity": null,
+      "tab_active_bg": null,
+      "tab_active_text": null,
+      "tab_inactive_bg": null,
+      "tab_inactive_text": null,
+      "font_weight_heading": null,
+      "font_weight_body": null,
+      "step_active_bg": null,
+      "step_done_bg": null,
+      "step_inactive_bg": null,
+      "accordion_header_bg": null,
+      "accordion_body_bg": null,
+      "separator_color": null
+    },
+    "checkout_fields": [],
+    "channels": [],
+    "locale": null,
+    "base_currency": "XAF",
+    "currency_conversion": {
+      "enabled": false,
+      "default_currency": "XAF",
+      "currencies": []
+    },
+    "return_url": "https://shop.example.com/payment/return?reference=trx_TerminalCanc0000000000&status=succeeded&trxref=CMD-4172",
+    "cancel_url": "https://shop.example.com/payment/return?reference=trx_TerminalCanc0000000000&status=cancelled&trxref=CMD-4172",
+    "payment_limits": {
+      "min_amount": 25,
+      "max_amount": 2000000,
+      "currency": "XAF"
+    },
+    "mobile_money_max_per_tx": {
+      "max_per_tx": 500000,
+      "currency": "XAF"
+    },
+    "geo_country": "CM",
+    "features": {
+      "download_receipt": true
+    },
+    "echo": {
+      "key": null,
+      "ws_host": "ws://localhost",
+      "ws_port": 8080,
+      "channel_prefix": "private-payment.",
+      "broadcaster": "pusher"
+    }
+  }
+}

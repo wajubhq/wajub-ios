@@ -1,0 +1,21 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/process",
+    "body": []
+  },
+  "http_status": 429,
+  "response_headers": {
+    "Retry-After": "300",
+    "X-RateLimit-Limit": "10",
+    "X-RateLimit-Remaining": "0"
+  },
+  "body": {
+    "code": 429,
+    "status": "Too Many Requests",
+    "message": "Too many requests",
+    "type": "checkout_process",
+    "retry_after": 300,
+    "retry_after_human": "00:05:00"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/pay/session"
+  },
+  "http_status": 401,
+  "body": {
+    "code": 401,
+    "status": "Unauthorized",
+    "message": "Payment session token required. Use Authorization: Bearer {token}."
+  }
+}

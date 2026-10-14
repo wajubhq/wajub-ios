@@ -1,0 +1,20 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/process",
+    "body": {
+      "channel": "cm.mobile",
+      "data": {
+        "phone": "+237690000000",
+        "country": "CM"
+      }
+    }
+  },
+  "http_status": 409,
+  "body": {
+    "code": 409,
+    "status": "Conflict",
+    "message": "A charge is already in progress for this payment. Wait for its outcome before charging again.",
+    "error_code": "payment_in_progress"
+  }
+}

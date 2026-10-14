@@ -1,0 +1,13 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/cancel"
+  },
+  "http_status": 200,
+  "body": {
+    "code": 200,
+    "status": "OK",
+    "message": "Transaction cancelled",
+    "redirect_url": "https://shop.example.com/payment/return?reference=trx_CancelMe0000000000000&status=cancelled&trxref=CMD-4172"
+  }
+}

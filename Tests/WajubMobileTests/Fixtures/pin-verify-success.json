@@ -1,0 +1,37 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/pin/verify",
+    "body": {
+      "pin_id": "prc_uIsYZzILMHuPmhGaPfZC",
+      "pin": "1234"
+    }
+  },
+  "http_status": 200,
+  "body": {
+    "status": "success",
+    "transaction": {
+      "id": "trx_PaystackR4tY8uIo2pLk",
+      "reference": "CMD-4172",
+      "trxref": "CMD-4172",
+      "amount": 5000,
+      "amount_total": 5000,
+      "amount_collected": 0,
+      "amount_paid": 0,
+      "remaining_amount": 5000,
+      "currency": "NGN",
+      "bearer": "merchant",
+      "fee": null,
+      "status": "processing",
+      "status_label": "Processing",
+      "sandbox": false,
+      "description": "Commande #4172",
+      "customer": null,
+      "receipt_url": null,
+      "expires_at": null,
+      "created_at": "2026-10-14T09:30:00+00:00",
+      "updated_at": "2026-10-14T09:30:00+00:00",
+      "terminal_at": null
+    }
+  }
+}

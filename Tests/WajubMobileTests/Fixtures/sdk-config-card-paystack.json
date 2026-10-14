@@ -1,0 +1,29 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/pay/sdk-config"
+  },
+  "http_status": 200,
+  "body": {
+    "code": 200,
+    "status": "OK",
+    "message": "SDK configuration retrieved",
+    "channels": {
+      "card": {
+        "available": true,
+        "provider": "paystack",
+        "sdk": "psp_inline",
+        "publishable_key": "pk_test_paystack",
+        "required_fields": [
+          "email"
+        ],
+        "client_session": true,
+        "inline": "psp_inline"
+      }
+    },
+    "embed_allowed_origins": null,
+    "checkout_hosts": [
+      "checkout.wajub.test"
+    ]
+  }
+}

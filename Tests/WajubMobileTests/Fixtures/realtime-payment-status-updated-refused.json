@@ -1,0 +1,13 @@
+{
+  "_captured_via": "App\\Events\\Payment\\PaymentStatusUpdated::broadcastAs()/broadcastWith() run in a test against api.wajub c02bc570 (PaymentStatusUpdated.php:24-53); delivered over Pusher/Reverb on `channel`.",
+  "event": "PaymentStatusUpdated",
+  "channel": "private-payment.trx_test_PVrU8x2kQ1mNa7Lb3cDe",
+  "data": {
+    "status": "pending",
+    "status_label": "Pending",
+    "reference": "trx_test_PVrU8x2kQ1mNa7Lb3cDe",
+    "uid": "trx_test_PVrU8x2kQ1mNa7Lb3cDe",
+    "error_code": "insufficient_funds",
+    "payer_message": "This payment could not be completed. Try again or use another payment method."
+  }
+}

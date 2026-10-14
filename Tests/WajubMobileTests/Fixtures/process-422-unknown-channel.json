@@ -1,0 +1,21 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/process",
+    "body": {
+      "channel": "xx.nothing",
+      "data": {}
+    }
+  },
+  "http_status": 422,
+  "body": {
+    "code": 422,
+    "status": "Unprocessable Content",
+    "message": "The selected channel is invalid.",
+    "errors": {
+      "channel": [
+        "The selected channel is invalid."
+      ]
+    }
+  }
+}

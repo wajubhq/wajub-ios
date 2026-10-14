@@ -1,0 +1,27 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/process",
+    "body": {
+      "channel": "cm.mobile",
+      "data": {
+        "phone": "+237677123459",
+        "country": "CM",
+        "_client": {
+          "timezone": "Africa/Douala",
+          "language": "fr-CM",
+          "screen": "1080x2400",
+          "color_depth": 24,
+          "fingerprint": "9f2c4e1a7b3d5f60"
+        }
+      }
+    }
+  },
+  "http_status": 402,
+  "body": {
+    "code": 402,
+    "status": "Payment Required",
+    "message": "This merchant cannot accept payments yet.",
+    "error_code": "merchant_not_verified"
+  }
+}

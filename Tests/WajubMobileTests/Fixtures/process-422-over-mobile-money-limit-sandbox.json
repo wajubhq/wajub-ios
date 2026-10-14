@@ -1,0 +1,31 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/process",
+    "body": {
+      "channel": "cm.mobile",
+      "data": {
+        "phone": "+237670000000",
+        "country": "CM",
+        "_client": {
+          "timezone": "Africa/Douala",
+          "language": "fr-CM",
+          "screen": "1080x2400",
+          "color_depth": 24,
+          "fingerprint": "9f2c4e1a7b3d5f60"
+        }
+      }
+    }
+  },
+  "http_status": 422,
+  "body": {
+    "code": 422,
+    "status": "Unprocessable Content",
+    "message": "This amount is above the limit for this payment method. Use a smaller amount or another method.",
+    "errors": {
+      "request": [
+        "This amount is above the limit for this payment method. Use a smaller amount or another method."
+      ]
+    }
+  }
+}

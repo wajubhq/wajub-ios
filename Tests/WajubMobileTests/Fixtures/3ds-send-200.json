@@ -1,0 +1,16 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/3ds/send",
+    "body": {
+      "three_ds_id": "759e9171-ea0d-4ad9-82d0-7509197af8c1"
+    }
+  },
+  "http_status": 200,
+  "body": {
+    "code": 200,
+    "status": "OK",
+    "message": "Code sent.",
+    "masked_email": "aw*******@example.com"
+  }
+}

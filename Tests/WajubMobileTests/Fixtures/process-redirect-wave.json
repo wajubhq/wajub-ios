@@ -1,0 +1,67 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/process",
+    "body": {
+      "channel": "ci.wave",
+      "data": {
+        "phone": "+2250701020304",
+        "country": "CI",
+        "_client": {
+          "timezone": "Africa/Douala",
+          "language": "fr-CM",
+          "screen": "1080x2400",
+          "color_depth": 24,
+          "fingerprint": "9f2c4e1a7b3d5f60"
+        }
+      }
+    }
+  },
+  "http_status": 202,
+  "body": {
+    "code": 202,
+    "status": "Accepted",
+    "message": "Continue in the Wave app.",
+    "action": "redirect",
+    "transaction": {
+      "id": "trx_Wave000000000000000000",
+      "reference": "CMD-4172",
+      "trxref": "CMD-4172",
+      "amount": 10000,
+      "amount_total": 10000,
+      "amount_collected": 10000,
+      "amount_paid": 0,
+      "remaining_amount": 0,
+      "currency": "XOF",
+      "bearer": "merchant",
+      "fee": null,
+      "status": "processing",
+      "status_label": "Processing",
+      "sandbox": false,
+      "description": "Commande #4172",
+      "customer": {
+        "name": "Awa Ngono",
+        "email": "awa.ngono@example.com"
+      },
+      "receipt_url": null,
+      "expires_at": null,
+      "created_at": "2026-10-14T09:30:00+00:00",
+      "updated_at": "2026-10-14T09:30:00+00:00",
+      "terminal_at": null,
+      "processing_context": {
+        "channel_slug": "ci.wave",
+        "is_mobile_money": true,
+        "is_ussd": false,
+        "is_bank_transfer": false,
+        "payer_instruction": null,
+        "bank_transfer_account": null,
+        "action_url": "https://pay.wave.com/c/cos-1x2y3z?a=10000&c=XOF&m=Maquis",
+        "three_ds_id": null,
+        "three_ds_method": null,
+        "masked_email": null,
+        "three_ds_timeout": null
+      }
+    },
+    "confirm_url": "https://pay.wave.com/c/cos-1x2y3z?a=10000&c=XOF&m=Maquis"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "_derived_from_code": true,
+  "_source": "api.wajub c02bc570 AuthenticatePaymentSession.php:140-146",
+  "request": {
+    "method": "GET",
+    "path": "/pay/session"
+  },
+  "http_status": 403,
+  "body": {
+    "code": 403,
+    "status": "Forbidden",
+    "message": "This token is not a payment session."
+  }
+}

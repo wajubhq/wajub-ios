@@ -1,0 +1,31 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/process",
+    "body": {
+      "channel": "cm.mtn",
+      "data": {
+        "phone": "+237691234567",
+        "country": "CM",
+        "_client": {
+          "timezone": "Africa/Douala",
+          "language": "fr-CM",
+          "screen": "1080x2400",
+          "color_depth": 24,
+          "fingerprint": "9f2c4e1a7b3d5f60"
+        }
+      }
+    }
+  },
+  "http_status": 422,
+  "body": {
+    "code": 422,
+    "status": "Unprocessable Content",
+    "message": "This phone number belongs to ORANGE (cm.orange) but the requested channel is cm.mtn. Use a matching MTN number or switch the channel.",
+    "errors": {
+      "phone": [
+        "This phone number belongs to ORANGE (cm.orange) but the requested channel is cm.mtn. Use a matching MTN number or switch the channel."
+      ]
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/broadcasting/auth",
+    "body": {
+      "channel_name": "private-payment.trx_SomeoneElse00000000",
+      "socket_id": "123456.7890123"
+    }
+  },
+  "http_status": 403,
+  "body": {
+    "message": "Forbidden"
+  }
+}

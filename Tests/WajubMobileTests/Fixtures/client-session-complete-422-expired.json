@@ -1,0 +1,21 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/client-session/complete",
+    "body": {
+      "client_session_id": "prc_unknownSession0000"
+    }
+  },
+  "http_status": 422,
+  "body": {
+    "code": 422,
+    "status": "Unprocessable Content",
+    "message": "This payment session has expired.",
+    "error_code": "client_session_expired",
+    "errors": {
+      "request": [
+        "This payment session has expired."
+      ]
+    }
+  }
+}

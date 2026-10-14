@@ -1,0 +1,13 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/pay/session"
+  },
+  "http_status": 410,
+  "body": {
+    "code": 410,
+    "status": "Gone",
+    "error_code": "session_expired",
+    "message": "This payment session has expired."
+  }
+}

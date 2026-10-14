@@ -1,0 +1,23 @@
+{
+  "_derived_from_code": true,
+  "_source": "api.wajub c02bc570 PaymentProcessingService.php:319-331 (BLK- reference: :925) through PaymentSessionController::buildProcessResponse() :581-651",
+  "request": {
+    "method": "POST",
+    "path": "/pay/process",
+    "body": {
+      "channel": "cm.mobile",
+      "data": {
+        "phone": "+237677123456",
+        "country": "CM"
+      }
+    }
+  },
+  "http_status": 403,
+  "body": {
+    "code": 403,
+    "status": "Forbidden",
+    "message": "Payment blocked: transaction risk score too high. Please contact support and reference BLK-PLACEHOLDER.",
+    "error_code": "shield_blocked",
+    "block_reference": "BLK-PLACEHOLDER"
+  }
+}

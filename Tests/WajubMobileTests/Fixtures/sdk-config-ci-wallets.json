@@ -1,0 +1,74 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/pay/sdk-config"
+  },
+  "http_status": 200,
+  "body": {
+    "code": 200,
+    "status": "OK",
+    "message": "SDK configuration retrieved",
+    "channels": {
+      "ci.mtn": {
+        "available": true,
+        "provider": "scripted_ci",
+        "sdk": "form",
+        "publishable_key": null,
+        "required_fields": [
+          "phone"
+        ],
+        "client_session": false
+      },
+      "ci.orange": {
+        "available": true,
+        "provider": "scripted_ci",
+        "sdk": "form",
+        "publishable_key": null,
+        "required_fields": [
+          "phone"
+        ],
+        "client_session": false
+      },
+      "ci.moov": {
+        "available": true,
+        "provider": "scripted_ci",
+        "sdk": "form",
+        "publishable_key": null,
+        "required_fields": [
+          "phone"
+        ],
+        "client_session": false
+      },
+      "ci.wave": {
+        "available": true,
+        "provider": "scripted_ci",
+        "sdk": "form",
+        "publishable_key": null,
+        "required_fields": [
+          "phone"
+        ],
+        "client_session": false
+      },
+      "ci.djamo": {
+        "available": true,
+        "provider": "djamo",
+        "sdk": "form",
+        "publishable_key": null,
+        "required_fields": [],
+        "client_session": false
+      },
+      "sn.djamo": {
+        "available": true,
+        "provider": "djamo",
+        "sdk": "form",
+        "publishable_key": null,
+        "required_fields": [],
+        "client_session": false
+      }
+    },
+    "embed_allowed_origins": null,
+    "checkout_hosts": [
+      "checkout.wajub.test"
+    ]
+  }
+}

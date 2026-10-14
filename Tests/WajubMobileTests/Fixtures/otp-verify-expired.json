@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/otp/verify",
+    "body": {
+      "otp_id": "prc_doesNotExist000000",
+      "code": "123456"
+    }
+  },
+  "http_status": 200,
+  "body": {
+    "status": "failed",
+    "attempts_remaining": 0,
+    "error": {
+      "code": "otp_expired",
+      "message": "This payment session has expired."
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/otp/resend",
+    "body": {
+      "otp_id": "prc_gB5M7pD3XPeBGI8msYNJ"
+    }
+  },
+  "http_status": 200,
+  "body": {
+    "code": 200,
+    "status": "OK",
+    "message": "Code sent."
+  }
+}

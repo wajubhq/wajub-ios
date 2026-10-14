@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/pin/verify",
+    "body": {
+      "pin_id": "prc_TZU9cgapsFqDZ4XeQttn",
+      "pin": "0000"
+    }
+  },
+  "http_status": 200,
+  "body": {
+    "status": "failed",
+    "attempts_remaining": 2,
+    "error": {
+      "code": "invalid_pin",
+      "message": "This verification could not be completed. Check the information and try again."
+    }
+  }
+}

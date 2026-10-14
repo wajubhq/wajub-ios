@@ -1,0 +1,11 @@
+{
+  "_captured_via": "App\\Events\\Payment\\PaymentStatusUpdated::broadcastAs()/broadcastWith() run in a test against api.wajub c02bc570 (PaymentStatusUpdated.php:24-53); delivered over Pusher/Reverb on `channel`.",
+  "event": "PaymentStatusUpdated",
+  "channel": "private-payment.trx_EventProcessing00000",
+  "data": {
+    "status": "processing",
+    "status_label": "Processing",
+    "reference": "trx_EventProcessing00000",
+    "uid": "trx_EventProcessing00000"
+  }
+}

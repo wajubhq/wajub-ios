@@ -1,0 +1,21 @@
+{
+  "_derived_from_code": true,
+  "_source": "api.wajub c02bc570 PaymentSessionController.php:340 abort_if(checkout_deferred, 409) rendered by bootstrap/app.php:233-244; AuthenticatePaymentSession.php:171-177 answers the same body for a prepared payment that is not a row yet.",
+  "request": {
+    "method": "POST",
+    "path": "/pay/process",
+    "body": {
+      "channel": "cm.mobile",
+      "data": {
+        "phone": "+237677123456",
+        "country": "CM"
+      }
+    }
+  },
+  "http_status": 409,
+  "body": {
+    "code": 409,
+    "status": "Conflict",
+    "message": "Validate the order before confirming this payment."
+  }
+}

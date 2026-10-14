@@ -1,0 +1,26 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/process",
+    "body": {
+      "channel": "card",
+      "data": {
+        "card.number": "4242424242424242",
+        "cvc": "123",
+        "exp": "12/30"
+      }
+    }
+  },
+  "http_status": 422,
+  "body": {
+    "code": 422,
+    "status": "Unprocessable Content",
+    "message": "Raw card data is not accepted. Collect cards with Wajub Checkout, Wajub Components or a Wajub mobile SDK, which pass them to the payment provider's secure fields.",
+    "error_code": "raw_card_data_not_accepted",
+    "errors": {
+      "card": [
+        "Raw card data is not accepted. Collect cards with Wajub Checkout, Wajub Components or a Wajub mobile SDK, which pass them to the payment provider's secure fields."
+      ]
+    }
+  }
+}

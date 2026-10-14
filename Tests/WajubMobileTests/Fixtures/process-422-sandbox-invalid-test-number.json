@@ -1,0 +1,23 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/process",
+    "body": {
+      "channel": "cm.mtn",
+      "data": {
+        "phone": "+237677123456"
+      }
+    }
+  },
+  "http_status": 422,
+  "body": {
+    "code": 422,
+    "status": "Unprocessable Content",
+    "message": "Invalid sandbox test number. Use a test number of the channel's operator, e.g. +237670000000 (success), +237670000001 (insufficient funds), +237670000002 (failure), +237670000003 (timeout), +237670000004 (canceled). See https://docs.wajub.com/developer-tools/testing/test-scenarios.",
+    "errors": {
+      "data.phone": [
+        "Invalid sandbox test number. Use a test number of the channel's operator, e.g. +237670000000 (success), +237670000001 (insufficient funds), +237670000002 (failure), +237670000003 (timeout), +237670000004 (canceled). See https://docs.wajub.com/developer-tools/testing/test-scenarios."
+      ]
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/pay/sdk-config"
+  },
+  "http_status": 200,
+  "body": {
+    "code": 200,
+    "status": "OK",
+    "message": "SDK configuration retrieved",
+    "channels": {
+      "card": {
+        "available": true,
+        "provider": "adyen",
+        "sdk": "adyen_custom_card",
+        "publishable_key": "pk_test_adyen",
+        "required_fields": [
+          "encrypted_card_number",
+          "encrypted_expiry_month",
+          "encrypted_expiry_year",
+          "encrypted_security_code"
+        ],
+        "client_session": true
+      }
+    },
+    "embed_allowed_origins": null,
+    "checkout_hosts": [
+      "checkout.wajub.test"
+    ]
+  }
+}
