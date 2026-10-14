@@ -32,6 +32,7 @@ extension CheckoutController {
 
     /// Decides on a status from a poll or the socket (README §13.2).
     func statusUpdated(_ update: StatusUpdate) {
+        if let code = update.errorCode { lastErrorCode = code }
         guard result == nil, attempt != nil, !showsOutcome, update.isInformative else { return }
         let status = update.status
         if let transaction = lastTransaction {
@@ -61,8 +62,11 @@ extension CheckoutController {
                 return
             }
             // While the provider's page is open the payer may still pay there (another card, a retry):
-            // a refused try is not the end yet.
+            // a refused try is not the end yet. On a client session the provider's own verdict comes
+            // from /pay/client-session/complete, never from a refused try seen by the watch: a payment
+            // made on the page always wins over it.
             if isBrowserOpen && browserInApp { return }
+            if attempt?.clientSession != nil { return }
             attempt?.inFlight = false
             fail(attemptEndedError(update))
         case .processing, .partial:
@@ -76,7 +80,9 @@ extension CheckoutController {
     /// `error_code`) 60 s after its last try: the request most likely never reached the API. Back to the
     /// form with `network_error`; the next Pay reuses the same `Idempotency-Key` (README §2.5).
     func giveUpOnUnansweredRequest(_ status: StatusUpdate) {
-        guard let attempt, let since = attempt.unansweredSince, status.errorCode == nil,
+        // An error_code from before this attempt is a leftover; only a newer one says the request arrived.
+        guard let attempt, let since = attempt.unansweredSince,
+              status.errorCode == nil || status.errorCode == attempt.priorErrorCode,
               clock.now.timeIntervalSince(since) >= Timing.unansweredRequestWait else { return }
         stopWatching()
         reusableKey = attempt.key
@@ -113,6 +119,7 @@ extension CheckoutController {
 
     /// A `400` on `/pay/process`: the status decides (README §9).
     func rereadStatus(orFail fallback: WajubError) {
+        let key = attempt?.key
         workTask = Task { [weak self] in
             guard let self else { return }
             let answer: APIAnswer?
@@ -123,7 +130,9 @@ extension CheckoutController {
             } catch {
                 answer = nil
             }
-            guard self.result == nil else { return }
+            // A dismiss, a cancel or a new attempt meanwhile: this answer is not theirs.
+            guard !Task.isCancelled, self.isCurrent(key), !self.isClosing else { return }
+            self.isBusy = false
             guard let answer, answer.isSuccess else {
                 self.fail(fallback)
                 return

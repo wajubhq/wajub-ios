@@ -58,6 +58,12 @@ final class FakeTransport: HTTPTransport, @unchecked Sendable {
 
     /// The clock `delayed` replies wait on.
     var clock: WajubClock?
+    /// Whether the fake reports connections (like URLSession for requests with a body only).
+    var reportsConnection: @Sendable (HTTPRequest) -> Bool = { _ in true }
+
+    func reportsConnection(for request: HTTPRequest) -> Bool {
+        reportsConnection(request)
+    }
 
     struct Request {
         var method: String

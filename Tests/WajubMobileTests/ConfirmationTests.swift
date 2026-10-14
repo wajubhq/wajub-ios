@@ -281,6 +281,24 @@ final class ConfirmationTests: XCTestCase {
         XCTAssertEqual(harness.controller.state, .success, "the payment made on the page wins")
         harness.controller.hostGone()
 
+        // The page closed: /complete is on its way when a poll still reads the refused try (the API has
+        // not verified the session yet). The provider's verdict decides, and the payment wins.
+        let verifying = await clientSession("client-session-start-202")
+        verifying.transport.on("GET", "/pay/status", .fixture("status-pending-attempt-refused"))
+        let completeGate = Gate()
+        verifying.transport.on("POST", "/pay/client-session/complete", .gated(completeGate, .fixture("client-session-complete-200")))
+        await waitUntil("browser") { !verifying.browser.opened.isEmpty }
+        verifying.browser.close()
+        await waitUntil("complete sent") { verifying.transport.requests("POST", "/pay/client-session/complete").count == 1 }
+        await verifying.advance(by: 5)
+        XCTAssertEqual(verifying.controller.state, .pending, "a refused try seen by the watch is not the verdict")
+        XCTAssertTrue(verifying.recorder.errors.isEmpty)
+        completeGate.open()
+        await waitUntil("paid") { verifying.controller.state == .success }
+        XCTAssertEqual(verifying.recorder.successes.count, 1)
+        verifying.controller.close()
+        XCTAssertEqual(verifying.controller.result?.status, "complete")
+
         // Every return from the browser completes, while the session is open.
         let returns = await clientSession("client-session-start-202")
         returns.transport.answer("client-session-complete-202")

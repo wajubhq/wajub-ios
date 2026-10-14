@@ -183,9 +183,13 @@ back — Safari closed, or the app back from the background — the sheet checks
 
 A payment request that gets no answer (no connection, a timeout) is never shown as a failure: the
 sheet shows "Payment in progress" and watches the payment. If 60 s after the last try the payment
-still has not started, the request most likely never reached Wajub: the sheet goes back to the form
-with a connection error, and the next Pay sends the same `Idempotency-Key`, so a request that did
-arrive is answered again instead of charged twice.
+still has not started (a refusal left by an earlier try does not count), the request most likely
+never reached Wajub: the sheet goes back to the form with a connection error, and the next Pay sends
+the same `Idempotency-Key`, so a request that did arrive is answered again instead of charged twice.
+
+When the payment asks for an Altcha proof of work, each submission gets a fresh one (the session is
+reloaded for a new challenge after each use); without one, nothing is sent and the sheet asks the
+payer to try again.
 
 Operator logos load from `https` URLs; one that is missing or does not load (iOS does not draw SVG
 logos) is drawn as the operator's brand badge.
@@ -317,8 +321,8 @@ module elsewhere.
   small Swift 6 package that implements the SDK's protocols the way an app does).
 - Timeouts (connect 10 s, then 30 s or 60 s for the whole call) are measured on the SDK's own clock,
   so the tests check them on a virtual clock. `URLSession` reports no connection event: a request
-  with a body counts as connected once its body starts flowing, one without a body when its answer
-  arrives.
+  with a body counts as connected once its body starts flowing; a request without one (the reads,
+  `/pay/cancel`) cannot be told apart from a slow answer, so only its whole-call timeout applies.
 - `Tests/WajubMobileTests/Fixtures` and `Sources/WajubMobile/Resources/mobile-money.json` are copies
   of the shared contract, written by `sync-spec.sh ios` in the mobile SDKs' monorepo; never edit
   them by hand (`test_SY_01_usesTheSyncedSpecFiles` checks their checksums). Test fixtures are a

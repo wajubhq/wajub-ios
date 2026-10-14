@@ -140,6 +140,12 @@ final class SheetPresenter: NSObject, CheckoutPresenting, UIAdaptivePresentation
     func dismiss(_ controller: CheckoutController, completion: @escaping @MainActor @Sendable () -> Void) {
         if let foregroundObserver { NotificationCenter.default.removeObserver(foregroundObserver) }
         foregroundObserver = nil
+        dismissSheet(completion: completion, tries: 0)
+    }
+
+    /// UIKit ignores a dismissal asked while a transition runs in the stack (the sheet or Safari coming
+    /// or going): wait for it, and try again if the dismissal still did not start.
+    private func dismissSheet(completion: @escaping @MainActor @Sendable () -> Void, tries: Int) {
         guard let sheet, let presenting = sheet.presentingViewController else {
             completion()
             return
@@ -151,8 +157,35 @@ final class SheetPresenter: NSObject, CheckoutPresenting, UIAdaptivePresentation
             if !queued { completion() }
             return
         }
+        let retry: @MainActor @Sendable () -> Void = { [weak self] in
+            self?.dismissSheet(completion: completion, tries: tries + 1)
+        }
+        var top: UIViewController = sheet
+        while let presented = top.presentedViewController {
+            top = presented
+        }
+        let transitioning = sheet.isBeingPresented || top.isBeingPresented || top.isBeingDismissed || top.transitionCoordinator != nil
+        if transitioning && tries < SheetPresenter.maxWaits {
+            let queued = top.transitionCoordinator?.animate(alongsideTransition: nil) { _ in
+                Task { @MainActor in retry() }
+            } ?? false
+            if !queued {
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 100_000_000)
+                    retry()
+                }
+            }
+            return
+        }
         presenting.dismiss(animated: true) {
             Task { @MainActor in completion() }
+        }
+        guard tries < SheetPresenter.maxWaits else { return }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            // Still presented and not leaving: the dismissal was dropped.
+            guard let sheet = self?.sheet, sheet.presentingViewController != nil, !sheet.isBeingDismissed else { return }
+            retry()
         }
     }
 
@@ -183,13 +216,15 @@ final class CheckoutHostingController: UIHostingController<CheckoutSheetView> {
         onAppear?()
     }
 
-    /// While the sheet is off screen (swiped away, covered by Safari, or its host's stack torn down),
-    /// it checks twice a second whether it is still presented; once it is not and the checkout has not
-    /// settled, the host went away. A swipe settles the checkout itself first.
+    /// While the sheet is off screen (swiped away, covered by Safari, or its host's stack torn down or
+    /// taken out of the window), it checks twice a second whether it, or what covers it, is still on
+    /// screen; gone twice in a row and the checkout not settled, the host went away. A swipe settles the
+    /// checkout itself first.
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         let controller = model.controller
         Task { @MainActor [weak self] in
+            var goneChecks = 0
             while controller.result == nil {
                 try? await Task.sleep(nanoseconds: 500_000_000)
                 guard let self else {
@@ -197,7 +232,13 @@ final class CheckoutHostingController: UIHostingController<CheckoutSheetView> {
                     return
                 }
                 if self.viewIfLoaded?.window != nil { return }
-                if self.presentingViewController == nil {
+                var top: UIViewController = self
+                while let presented = top.presentedViewController {
+                    top = presented
+                }
+                let gone = self.presentingViewController == nil || top.viewIfLoaded?.window == nil
+                goneChecks = gone ? goneChecks + 1 : 0
+                if goneChecks >= 2 {
                     if !controller.isClosing { controller.hostGone() }
                     return
                 }

@@ -2,7 +2,7 @@ import XCTest
 @testable import WajubMobile
 
 /// A clock whose sleeps return at once (and are recorded), for retry backoffs. The request timers
-/// (their first sleep is the 10 s connect budget) never fire: `test_TR_05` covers them on a `TestClock`.
+/// (their sleeps are 10 s or more) never fire: `test_TR_05` covers them on a `TestClock`.
 final class ImmediateClock: WajubClock, @unchecked Sendable {
     private let lock = NSLock()
     private var recorded: [TimeInterval] = []
@@ -10,7 +10,7 @@ final class ImmediateClock: WajubClock, @unchecked Sendable {
     var sleeps: [TimeInterval] { lock.locked { recorded } }
 
     func sleep(seconds: TimeInterval) async throws {
-        if seconds == Timing.connectTimeout {
+        if seconds >= Timing.connectTimeout {
             try await Task.sleep(nanoseconds: 3_600_000_000_000)
         }
         record(seconds)
@@ -179,6 +179,28 @@ final class TransportTests: XCTestCase {
         await waitUntil("timed out") { slowRead.value != nil }
         XCTAssertEqual(slowRead.value, "timeout")
 
+        // A transport that cannot report the connection (URLSession, for a request without a body):
+        // only the whole-call timeout applies, so a read answered at 15 s succeeds.
+        transport.reportsConnection = { $0.body?.isEmpty == false }
+        transport.on("GET", "/pay/status", .delayed(15, .fixture("status-processing")))
+        let unreported = Outcome()
+        Task { await unreported.record { try await session.send(.status, policy: .noRetry) } }
+        await waitUntil("timer") { clock.hasSleeper(dueWithin: 30) }
+        await clock.advance(by: 15)
+        await waitUntil("answered") { unreported.value != nil }
+        XCTAssertEqual(unreported.value, "200")
+        // …while a request with a body that never connects still times out at 10 s.
+        transport.on("POST", "/pay/cancel", .stall)
+        let stalled = Outcome()
+        Task { await stalled.record { try await session.send(.cancel, body: ["x": 1], policy: .noRetry) } }
+        await waitUntil("timers") { clock.hasSleeper(dueWithin: 10) }
+        await clock.advance(by: 10)
+        await waitUntil("timed out") { stalled.value != nil }
+        XCTAssertEqual(stalled.value, "timeout")
+        XCTAssertFalse(URLSessionTransport().reportsConnection(for: HTTPRequest(
+            method: "GET", url: WajubSDK.apiURL, headers: [:], body: nil, connectTimeout: 10, timeout: 30)))
+        transport.reportsConnection = { _ in true }
+
         // A timed-out read is retried like any timeout (TR-08).
         transport.on("GET", "/pay/session", .stall, .fixture("session-cm-aggregate"))
         let retried = Outcome()
@@ -333,6 +355,27 @@ final class TransportTests: XCTestCase {
         XCTAssertEqual(lost.transport.requests("POST", "/pay/process").last?.header("Idempotency-Key"), firstKey,
                        "the same Idempotency-Key: a request that did arrive is replayed, not charged twice")
         form.hostGone()
+
+        // An error_code the payment already carried before this attempt (left by an earlier refused try)
+        // does not keep the sheet waiting: only a newer one says the request arrived.
+        let again = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
+        again.transport.on("POST", "/pay/process", .fixture("process-failed-402"), .failure(.timeout))
+        again.transport.answer("status-pending-attempt-refused")
+        let retry = await again.start()
+        retry.setPhone("670000000")
+        retry.submitMobileMoney()
+        await waitUntil("declined") { retry.state == .failed }
+        retry.tryAgain()
+        retry.submitMobileMoney()
+        await again.drive(until: "pending") { retry.state == .pending }
+        let secondKey = again.transport.requests("POST", "/pay/process").last?.header("Idempotency-Key")
+        await again.drive(until: "back on the form", maxSteps: 40) { retry.state == .collectingDetails }
+        XCTAssertEqual(retry.banner?.code, WajubError.Code.networkError)
+        again.transport.answer("process-processing-mobile-money-sandbox")
+        retry.submitMobileMoney()
+        await waitUntil("approval") { retry.state == .approvalRequired }
+        XCTAssertEqual(again.transport.requests("POST", "/pay/process").last?.header("Idempotency-Key"), secondKey)
+        retry.hostGone()
 
         // A `pending` with an error_code is a previous attempt's leftover: keep watching.
         let leftover = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")

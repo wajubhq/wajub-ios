@@ -179,7 +179,17 @@ extension CheckoutController {
         let restart = clientSessionFailed
         workTask = Task { [weak self] in
             guard let self else { return }
-            let altcha = await self.nextAltchaSolution()
+            let altcha: AltchaSolution?
+            switch await self.nextAltcha() {
+            case .off:
+                altcha = nil
+            case .solved(let solution):
+                altcha = solution
+            case .unavailable:
+                guard self.isCurrent(attempt.key) else { return }
+                self.notSent(.catalogue(WajubError.Code.securityCheckFailed, self.language))
+                return
+            }
             guard self.isCurrent(attempt.key) else { return }
             let body = WajubSession.clientSessionBody(fields: fields, returnURL: self.options.returnURL, restart: restart, altcha: altcha)
             let answer: APIAnswer

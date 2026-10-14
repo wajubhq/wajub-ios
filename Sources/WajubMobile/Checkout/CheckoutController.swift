@@ -91,8 +91,13 @@ public final class CheckoutController {
         var clientSession: ClientSession?
         /// `POST /pay/process` got no answer after its retries; the last try was sent then.
         var unansweredSince: Date?
+        /// The `error_code` the payment already carried when this attempt was sent (a refusal left by an
+        /// earlier try).
+        var priorErrorCode: String?
     }
 
+    /// The last `error_code` the payment was seen with (a refused try stays on it until the next one).
+    var lastErrorCode: String?
     /// The `Idempotency-Key` the next Pay reuses, after a request that may never have reached the API.
     var reusableKey: String?
     /// The provider page is open in the in-app browser (not handed to another app).
@@ -132,7 +137,7 @@ public final class CheckoutController {
     }
 
     /// Something is running: the sheet's buttons wait.
-    public var isWorking: Bool { isBusy || isCancelling || isCollectingCard }
+    public var isWorking: Bool { isBusy || isCancelling || isCollectingCard || cancelTask != nil }
 
     /// A payment is being made (Pay shows its spinner).
     public var isPaying: Bool { isBusy || isCollectingCard }

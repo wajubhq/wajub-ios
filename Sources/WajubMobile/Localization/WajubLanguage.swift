@@ -73,6 +73,12 @@ public struct WajubStrings: Sendable {
     public var mobileMoneyNumber: String { t("Mobile Money number", "Numéro Mobile Money") }
     public var mobileMoneyOperator: String { t("Operator", "Opérateur") }
     public var changeOperator: String { t("Change", "Modifier") }
+    /// The number's operator cannot take this amount; `limit` is "Maximum …" or "Minimum …".
+    public func operatorOutOfLimits(_ name: String, limit: String) -> String {
+        fill(t("{name} can't be used for this amount ({limit}). Choose another operator or payment method.",
+               "{name} ne peut pas être utilisé pour ce montant ({limit}). Choisissez un autre opérateur ou moyen de paiement."),
+             ["name": name, "limit": limit])
+    }
 
     // Card
     public var payByCard: String { t("Pay by card", "Payer par carte") }
