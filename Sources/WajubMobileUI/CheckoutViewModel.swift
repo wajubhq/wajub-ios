@@ -1,4 +1,4 @@
-#if canImport(UIKit) && canImport(SwiftUI)
+#if os(iOS)
 import SwiftUI
 import UIKit
 import WajubMobile
@@ -77,11 +77,11 @@ struct SheetStyle {
     var warningBackground: Color { color(tokens.warningBackground) }
     var separator: Color { theme.separator.map(color) ?? color(tokens.inputBorder) }
 
-    /// The first family of the stack the app ships, else the platform's font.
+    /// The first family of the stack the app ships, else the platform's font; scaled with Dynamic Type once.
     func font(size: Double, weight: Int) -> Font {
         let scaled = UIFontMetrics.default.scaledValue(for: CGFloat(size))
         for family in theme.shape.fontFamilies where UIFont(name: family, size: scaled) != nil {
-            return Font.custom(family, size: scaled).weight(SheetStyle.weight(weight))
+            return Font.custom(family, fixedSize: scaled).weight(SheetStyle.weight(weight))
         }
         return Font.system(size: scaled, weight: SheetStyle.weight(weight))
     }

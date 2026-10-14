@@ -89,6 +89,19 @@ final class ChannelTests: XCTestCase {
         let inside = Fixtures.session("session-cm-aggregate")
         XCTAssertNil(MethodResolver.methods(inside, config: config, language: .en, hasCardCollector: true).first?.limit)
         XCTAssertEqual(WajubStrings(.fr).maximum("500 000 FCFA"), "Maximum 500 000 FCFA")
+
+        // Inside the Mobile Money form, an operator out of its limits is shown disabled, not hidden.
+        let narrow = try SessionResponse(json: Fixtures.body("session-ci-xof-wallets").setting(["channels", "1", "max_amount"], to: 1000))
+        var form = MobileMoneyForm(channels: narrow.channels.filter(\.isMobileMoney), config: Fixtures.config("sdk-config-ci-wallets"),
+                                   language: .en, amount: 15000, options: MobileMoneyOptions(), geoCountry: "CI")
+        XCTAssertEqual(form.choices.map(\.id), ["mtn", "moov", "orange", "wave"])
+        XCTAssertEqual(form.choices[0].limit, .maximum(1000))
+        XCTAssertEqual(form.selection, "moov", "the first operator the payer can use")
+        form.pick("mtn")
+        XCTAssertEqual(form.selection, "moov", "a disabled operator cannot be picked")
+        form.setPhone("0501020304")
+        XCTAssertEqual(form.selection, "moov", "nor preselected by detection")
+        XCTAssertEqual(form.validate(sandbox: false).error?.code, WajubError.Code.operatorMismatch, "never paid through another operator")
     }
 
     /// CD-01 picks the card flavour

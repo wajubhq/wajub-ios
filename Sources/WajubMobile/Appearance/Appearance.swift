@@ -214,14 +214,21 @@ enum AppearanceValue {
         }
     }
 
-    /// The families of a CSS font stack, quotes removed, generic families dropped.
-    static func fontFamilies(_ text: String?) -> [String] {
-        guard let text else { return [] }
-        let generic: Set<String> = ["serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui", "-apple-system",
-                                    "blinkmacsystemfont", "ui-sans-serif", "ui-serif", "ui-monospace"]
-        return text.split(separator: ",").map {
-            $0.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "'\""))
-        }.filter { !$0.isEmpty && !generic.contains($0.lowercased()) }
+    /// The families of a CSS font stack to try in order, quotes removed; `nil` when no stack is given.
+    /// The stack stops at its first system or generic family (`-apple-system`, `system-ui`,
+    /// `sans-serif`…): from there on it is the platform's font.
+    static func fontStack(_ text: String?) -> [String]? {
+        guard let text, !text.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        let system: Set<String> = ["serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui", "-apple-system",
+                                   "blinkmacsystemfont", "ui-sans-serif", "ui-serif", "ui-monospace", "ui-rounded"]
+        var families: [String] = []
+        for entry in text.split(separator: ",") {
+            let name = entry.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "'\""))
+            if name.isEmpty { continue }
+            if system.contains(name.lowercased()) { break }
+            families.append(name)
+        }
+        return families
     }
 
     /// Merchant `border_radius`: `"12px"`, `"12"`, or a token `none` / `sm` / `md` / `lg` / `xl`.

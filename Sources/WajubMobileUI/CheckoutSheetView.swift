@@ -1,4 +1,4 @@
-#if canImport(UIKit) && canImport(SwiftUI)
+#if os(iOS)
 import SwiftUI
 import UIKit
 import WajubMobile
@@ -9,6 +9,8 @@ struct CheckoutSheetView: View {
     @ObservedObject var model: CheckoutViewModel
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Declared so a text-size change redraws the sheet (fonts are scaled with Dynamic Type).
+    @Environment(\.sizeCategory) private var sizeCategory
 
     var body: some View {
         let style = SheetStyle(theme: model.theme(system: colorScheme), reduceMotion: reduceMotion)
@@ -18,6 +20,11 @@ struct CheckoutSheetView: View {
                 ScreenView(model: model, style: style)
                     .padding(.horizontal, style.unit * 5)
                     .padding(.vertical, style.unit * 4)
+                    .frame(maxWidth: .infinity)
+                    // Number pads have no Return key: a tap between the fields closes the keyboard.
+                    .background(Color.clear.contentShape(Rectangle()).onTapGesture {
+                        WajubCheckout.keyWindow()?.endEditing(true)
+                    })
                     .id(ScreenView.key(model.controller.screen))
                     .transition(.opacity)
             }
@@ -131,7 +138,8 @@ struct ScreenView: View {
         case .loading:
             if model.controller.options.loader == .spinner {
                 ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: style.primary))
+                    .progressViewStyle(.circular)
+                    .tint(style.primary)
                     .frame(maxWidth: .infinity, minHeight: 200)
             } else {
                 SkeletonView(style: style, label: model.strings.loading)

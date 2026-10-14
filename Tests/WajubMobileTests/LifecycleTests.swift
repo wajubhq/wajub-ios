@@ -16,6 +16,7 @@ final class LifecycleTests: XCTestCase {
         XCTAssertEqual(controller.result, .cancelled(reason: .payerCancelled, redirectURL: redirect))
         XCTAssertEqual(Array(harness.recorder.events.suffix(3)), ["state:CANCELLED", "cancel:payer_cancelled", "complete:cancelled"])
         XCTAssertEqual(harness.recorder.cancels, [CancelEvent(reason: .payerCancelled, redirectURL: redirect)])
+        XCTAssertFalse(harness.recorder.states.contains(.processing), "cancelling is not PROCESSING")
     }
 
     /// CN-02 cancels on dismiss before any attempt
@@ -76,6 +77,62 @@ final class LifecycleTests: XCTestCase {
         dismissedController.dismiss()
         await waitUntil("closed") { dismissedController.result != nil }
         XCTAssertEqual(dismissedController.result?.status, "complete")
+        XCTAssertEqual(dismissed.recorder.successes.count, 1, "onSuccess before onComplete")
+        XCTAssertEqual(dismissed.recorder.events.suffix(2), ["success", "complete:complete"])
+
+        // Still processing: money may move, so never `cancelled`.
+        let running = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
+        running.transport.answer("cancel-400-not-cancellable", "status-processing")
+        let runningController = await running.start()
+        runningController.dismiss()
+        await waitUntil("closed") { runningController.result != nil }
+        XCTAssertEqual(runningController.result?.status, "processing")
+
+        let asked = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
+        asked.transport.answer("cancel-400-not-cancellable", "status-processing")
+        let askedController = await asked.start()
+        askedController.cancelPayment()
+        await waitUntil("pending") { askedController.state == .pending }
+        XCTAssertNil(askedController.result, "the sheet waits for the payment running")
+        await asked.advance(by: 5)
+        XCTAssertEqual(asked.transport.requests("GET", "/pay/status").count, 2, "watching")
+        askedController.hostGone()
+        XCTAssertEqual(askedController.result?.status, "processing")
+
+        let failed = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
+        failed.transport.answer("cancel-400-not-cancellable")
+        failed.transport.on("GET", "/pay/status", .json(200, ["transaction": ["reference": "trx", "status": "failed"]]))
+        let failedController = await failed.start()
+        failedController.dismiss()
+        await waitUntil("closed") { failedController.result != nil }
+        XCTAssertEqual(failedController.result?.status, "failed")
+        XCTAssertEqual(failed.recorder.errors.map(\.code), [WajubError.Code.paymentFailed])
+    }
+
+    /// ST-02 fires callbacks in order
+    @MainActor func test_ST_02_ignoresAnswersThatArriveAfterAnOutcome() async {
+        // The status says paid while the OTP verification is still running; then the verification answers.
+        let harness = Harness(session: "session-cm-aggregate", config: "sdk-config-card-kkiapay")
+        let gate = Gate()
+        let paid = Fixtures.body("otp-verify-success").setting(["transaction", "status"], to: "succeeded")
+        harness.transport.answer("process-requires-otp")
+        harness.transport.on("POST", "/pay/otp/verify", .gated(gate, .json(200, paid)))
+        harness.transport.on("GET", "/pay/status", .fixture("status-succeeded"))
+        let controller = await harness.start()
+        controller.selectMethod("card")
+        controller.submitCard()
+        await waitUntil("otp") { controller.state == .otpRequired }
+        controller.submitStep(["code": "123456"])
+        await waitUntil("verifying") { controller.state == .verifying }
+        await harness.advance(by: 5)
+        XCTAssertEqual(controller.state, .success)
+        gate.open()
+        await settle()
+        XCTAssertEqual(controller.state, .success)
+        XCTAssertEqual(harness.recorder.successes.count, 1, "onSuccess once")
+        await harness.advance(by: 3)
+        XCTAssertEqual(controller.result?.status, "complete")
+        XCTAssertTrue(harness.transport.requests("POST", "/pay/cancel").isEmpty)
     }
 
     /// ST-01 reports Wajub.js states

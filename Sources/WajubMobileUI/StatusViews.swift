@@ -1,4 +1,4 @@
-#if canImport(UIKit) && canImport(SwiftUI)
+#if os(iOS)
 import SwiftUI
 import UIKit
 import WajubMobile
@@ -12,7 +12,8 @@ struct WaitingRow: View {
     var body: some View {
         HStack(spacing: style.unit * 2) {
             ProgressView()
-                .progressViewStyle(CircularProgressViewStyle(tint: style.primary))
+                .progressViewStyle(.circular)
+                .tint(style.primary)
             Text(text)
                 .font(style.hint)
                 .foregroundColor(style.textSecondary)
@@ -95,6 +96,8 @@ struct StepView: View {
     @State private var code = ""
     @State private var phone = ""
     @State private var birthday = Calendar(identifier: .gregorian).date(byAdding: .year, value: -30, to: Date()) ?? Date()
+    /// The date is sent only once the payer has picked one.
+    @State private var birthdayPicked = false
     @State private var address = ""
     @State private var city = ""
     @State private var region = ""
@@ -116,7 +119,7 @@ struct StepView: View {
             if let error = step.error {
                 BannerView(message: error.message, foreground: style.danger, background: style.dangerBackground, style: style)
             }
-            PrimaryButton(title: strings.confirm, style: style, busy: controller.isBusy) {
+            PrimaryButton(title: strings.confirm, style: style, busy: controller.isWorking) {
                 controller.submitStep(values)
             }
             if step.kind == .otp || step.kind == .pin || step.kind == .phone {
@@ -139,10 +142,11 @@ struct StepView: View {
                        keyboard: .phonePad, contentType: .telephoneNumber)
         case .birthday:
             FieldBox(label: strings.birthday, error: errors["birthday"]?.message, style: style) {
-                DatePicker("", selection: $birthday, in: ...Date(), displayedComponents: .date)
+                DatePicker(strings.birthday, selection: $birthday, in: ...Date(), displayedComponents: .date)
                     .labelsHidden()
                     .datePickerStyle(.compact)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .onChange(of: birthday) { _ in birthdayPicked = true }
             }
         case .address:
             InputField(label: strings.fieldLabel("address"), text: $address, error: errors["address"]?.message, style: style,
@@ -160,7 +164,7 @@ struct StepView: View {
         case .otp: return ["code": code]
         case .pin: return ["pin": code]
         case .phone: return ["phone": phone]
-        case .birthday: return ["birthday": StepView.dayFormatter.string(from: birthday)]
+        case .birthday: return ["birthday": birthdayPicked ? StepView.dayFormatter.string(from: birthday) : ""]
         case .address: return ["address": address, "city": city, "state": region, "zip_code": zipCode]
         }
     }
@@ -232,7 +236,7 @@ struct ThreeDSView: View {
                 if let error = challenge.error {
                     BannerView(message: error.message, foreground: style.danger, background: style.dangerBackground, style: style)
                 }
-                PrimaryButton(title: strings.confirm, style: style, busy: controller.isBusy) {
+                PrimaryButton(title: strings.confirm, style: style, busy: controller.isWorking) {
                     controller.submitThreeDSCode(code)
                 }
                 ResendButton(availableAt: challenge.resendAvailableAt, model: model, style: style) { controller.resendThreeDSCode() }
