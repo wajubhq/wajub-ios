@@ -252,7 +252,7 @@ public struct Branding: Equatable, Sendable {
     public var shadow: String?
     /// 0–100.
     public var overlayIntensity: Int?
-    /// From an integer or a string.
+    /// From an integer, a numeric string, `"normal"` or `"bold"`.
     public var fontWeightHeading: Int?
     public var fontWeightBody: Int?
     public var separatorColor: String?
@@ -282,8 +282,8 @@ public struct Branding: Equatable, Sendable {
         errorColor = json["error_color"]?.nonEmptyString
         shadow = json["shadow"]?.nonEmptyString
         overlayIntensity = json["overlay_intensity"]?.int
-        fontWeightHeading = json["font_weight_heading"]?.int
-        fontWeightBody = json["font_weight_body"]?.int
+        fontWeightHeading = AppearanceValue.fontWeight(json["font_weight_heading"]?.string)
+        fontWeightBody = AppearanceValue.fontWeight(json["font_weight_body"]?.string)
         separatorColor = json["separator_color"]?.nonEmptyString
     }
 

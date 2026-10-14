@@ -81,11 +81,10 @@ public struct InheritedTheme: Equatable, Sendable {
         self.borderRadius = borderRadius
     }
 
-    /// Keeps only usable values (Wajub.js's thresholds): `primary` at 3:1 against the background,
-    /// `text` and `textSecondary` at 4.5:1, the radius capped at 22.
-    public func usable(defaultBackground: RGBAColor) -> InheritedTheme {
+    /// Keeps only usable values (Wajub.js's thresholds): `primary` at 3:1 against the sheet's
+    /// background, `text` and `textSecondary` at 4.5:1, the radius capped at 22.
+    public func usable(against background: RGBAColor) -> InheritedTheme {
         var copy = self
-        let background = self.background ?? defaultBackground
         if let primary, primary.contrast(with: background) < 3 { copy.primary = nil }
         if let text, text.contrast(with: background) < 4.5 { copy.text = nil }
         if let textSecondary, textSecondary.contrast(with: background) < 4.5 { copy.textSecondary = nil }
@@ -100,7 +99,7 @@ public struct ThemeShape: Equatable, Sendable {
     public static let inputHeight = 44.0
 
     public var radius: Double
-    /// Families to try in order; empty means the platform's.
+    /// Families to try in order (Inter by default, if the app ships it); then the platform's font.
     public var fontFamilies: [String]
     public var fontSizeBase: Double
     public var fontWeightNormal: Int
@@ -170,7 +169,7 @@ public enum ThemeResolver {
         let defaults = ThemeTokens.defaults(scheme)
         let host = appearance ?? Appearance()
         let preset = host.theme.flatMap(Appearance.preset) ?? Appearance()
-        let inherited = host.inherit == true ? inherited?.usable(defaultBackground: defaults.background) : nil
+        let hostTheme = host.inherit == true ? inherited : nil
         // Scheme-bound merchant colours apply to the scheme the merchant designed for.
         let merchantScheme: ColorSchemeKind = branding?.appearanceMode?.lowercased() == "dark" ? .dark : .light
         let schemeBranding = scheme == merchantScheme ? branding : nil
@@ -181,13 +180,15 @@ public enum ThemeResolver {
 
         var tokens = defaults
         let background = color(host.variables.colorBackground, host.backgroundColor, preset.backgroundColor)
-            ?? inherited?.background ?? color(schemeBranding?.backgroundColor)
+            ?? hostTheme?.background ?? color(schemeBranding?.backgroundColor)
         if let background { tokens.background = background }
+        let inherited = hostTheme?.usable(against: tokens.background)
 
-        let hostPrimary = color(host.variables.colorPrimary, host.primaryColor, preset.primaryColor) ?? inherited?.primary
-        var primary = hostPrimary
+        var primary = color(host.variables.colorPrimary, host.primaryColor, preset.primaryColor) ?? inherited?.primary
+        var merchantPrimary = false
         if primary == nil, let merchant = color(branding?.primaryColor), merchant.contrast(with: tokens.background) >= 3 {
             primary = merchant
+            merchantPrimary = true
         }
         if let primary {
             tokens.primary = primary
@@ -195,7 +196,8 @@ public enum ThemeResolver {
             tokens.link = primary
             tokens.focusRing = primary
         }
-        let onPrimary = color(host.buttonTextColor, preset.buttonTextColor, branding?.buttonTextColor)
+        // The merchant's button text goes with the merchant's primary only.
+        let onPrimary = color(host.buttonTextColor, preset.buttonTextColor, merchantPrimary ? branding?.buttonTextColor : nil)
         tokens.onPrimary = onPrimary ?? (tokens.primary.contrast(with: .white) >= tokens.primary.contrast(with: .nearBlack) ? .white : .nearBlack)
 
         if let text = color(host.variables.colorText) ?? inherited?.text { tokens.text = text }
@@ -232,11 +234,9 @@ public enum ThemeResolver {
         let radius = AppearanceValue.length(host.variables.borderRadius) ?? AppearanceValue.length(host.borderRadius)
             ?? AppearanceValue.length(preset.borderRadius) ?? inherited?.borderRadius
             ?? AppearanceValue.brandingRadius(branding?.borderRadius) ?? 8
-        var families = AppearanceValue.fontFamilies(host.variables.fontFamily)
-        if families.isEmpty { families = AppearanceValue.fontFamilies(host.fontFamily) }
-        if families.isEmpty { families = AppearanceValue.fontFamilies(preset.fontFamily) }
-        if families.isEmpty { families = AppearanceValue.fontFamilies(inherited?.fontFamily) }
-        if families.isEmpty { families = AppearanceValue.fontFamilies(branding?.font) }
+        let families = AppearanceValue.fontStack(host.variables.fontFamily) ?? AppearanceValue.fontStack(host.fontFamily)
+            ?? AppearanceValue.fontStack(preset.fontFamily) ?? AppearanceValue.fontStack(inherited?.fontFamily)
+            ?? AppearanceValue.fontStack(branding?.font) ?? ["Inter"]
         let spacing = AppearanceValue.length(host.variables.spacingUnit) ?? (branding?.density == "compact" ? 3 : 4)
         let shape = ThemeShape(
             radius: min(radius, ThemeShape.maxRadius), fontFamilies: families,

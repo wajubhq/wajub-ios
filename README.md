@@ -41,6 +41,9 @@ CheckoutResult (complete | processing | failed | cancelled) — confirm server-s
 | Swift | 5.9+ (Xcode 15 or later) |
 | Dependencies | none (Stripe is optional and lives in your app, see [Cards through Stripe](#cards-through-stripe)) |
 
+`WajubMobileUI` presents from your app's windows (`UIApplication.shared`): use it in an app, not in an
+app extension.
+
 ## Installation
 
 Swift Package Manager — in Xcode, *File › Add Package Dependencies…* with
@@ -175,7 +178,7 @@ payer paid, fee included), `currency`, `method`, `status` (`"success"`), `timest
 
 Provider pages open in `SFSafariViewController` (card pages, 3-D Secure, client sessions) or are
 handed to iOS (`UIApplication.open`, wallet pages that open the wallet's app). When the payer comes
-back — Safari closed or the app back in the foreground — the sheet checks the payment at once.
+back — Safari closed, or the app back from the background — the sheet checks the payment at once.
 
 Operator logos load from `https` URLs; one that is missing or does not load (iOS does not draw SVG
 logos) is drawn as the operator's brand badge.
@@ -275,8 +278,8 @@ Return `nil` when the payer backs out. A thrown error is shown on the card form.
   `CheckoutController(options:browser:)` (a `BrowserOpening` of yours), draw its `screen`, call its
   actions (`selectMethod`, `setPhone`, `pickOperator`, `submitMobileMoney`, `submitCard`,
   `payWallet`, `submitStep`, `submitThreeDSCode`, `tryAgain`, `cancelPayment`, `dismiss`,
-  `hostGone`…), and present it with `Checkout.present(_:presenter:browser:)` and your own
-  `CheckoutPresenting`.
+  `appWillEnterForeground`, `hostGone`…), and present it with
+  `Checkout.present(_:presenter:browser:)` and your own `CheckoutPresenting`.
 - `MobileMoneyData.shared` exposes the Mobile Money rules (national digits, validation, operator
   detection, E.164, formatting).
 
@@ -289,8 +292,8 @@ swift test
 The repository is a Swift package. The core and its tests (the contract tests of
 `conformance.md`, named `test_PR_01_…` with the requirement id in a `/// PR-01 …` line above each,
 running against the contract's real API fixtures) build on macOS and on Linux. The sheet
-(`WajubMobileUI`) needs the iOS SDK: its sources are wrapped in `#if canImport(UIKit) && canImport(SwiftUI)`
-and compile to an empty module elsewhere.
+(`WajubMobileUI`) needs the iOS SDK: its sources are wrapped in `#if os(iOS)` and compile to an empty
+module elsewhere.
 
 - On a Mac with Xcode: `swift test`, then
   `xcodebuild -scheme WajubMobile-Package -destination 'generic/platform=iOS Simulator' build` to

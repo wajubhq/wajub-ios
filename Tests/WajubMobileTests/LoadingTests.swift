@@ -25,6 +25,17 @@ final class LoadingTests: XCTestCase {
         controller.hostGone()
     }
 
+    /// LD-01 loads session and sdk-config in parallel
+    @MainActor func test_LD_01_treatsAnUnknownStatusAsPending() async {
+        let body = Fixtures.body("session-cm-aggregate").setting(["transaction", "status"], to: "on_hold")
+        let harness = Harness(config: "sdk-config-card-kkiapay")
+        harness.transport.on("GET", "/pay/session", .json(200, body))
+        let controller = await harness.start()
+        XCTAssertEqual(controller.state, .initiated)
+        XCTAssertEqual(controller.methods.map(\.id), ["card", "mobile_money"], "sdk-config read: card offered")
+        controller.hostGone()
+    }
+
     /// LD-02 maps unknown sessions to session_not_found
     @MainActor func test_LD_02_mapsUnknownSessionsToSessionNotFound() async {
         for fixture in ["error-401-invalid-token", "error-401-missing-token", "error-403-not-a-payment-session"] {

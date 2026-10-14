@@ -41,8 +41,12 @@ public final class CheckoutController {
     public private(set) var banner: WajubError?
     /// Sandbox only: an operator mismatch that does not block.
     public private(set) var warning: WajubError?
-    /// A request is running (`PROCESSING` / `VERIFYING`).
+    /// A payment request or a verification is running (`PROCESSING` / `VERIFYING`).
     public private(set) var isBusy = false
+    /// The cancel call of "Cancel payment" is running.
+    public private(set) var isCancelling = false
+    /// The host's `CardCollector` is collecting a card.
+    public private(set) var isCollectingCard = false
     /// "Try again" waits until then (`rate_limited`).
     public private(set) var retryAvailableAt: Date?
     public private(set) var isBrowserOpen = false
@@ -118,9 +122,12 @@ public final class CheckoutController {
         AmountFormatter.format(amount, currency: session?.transaction.currency ?? "", language: language)
     }
 
+    /// Something is running: the sheet's buttons wait.
+    public var isWorking: Bool { isBusy || isCancelling || isCollectingCard }
+
     /// "Cancel payment" is offered while no attempt is in flight.
     public var canCancelPayment: Bool {
-        guard result == nil, session != nil, !isBusy, attempt?.inFlight != true else { return false }
+        guard result == nil, session != nil, !isWorking, attempt?.inFlight != true else { return false }
         switch screen {
         case .methods, .form: return true
         case .failed(let error): return error.retryable
@@ -130,7 +137,7 @@ public final class CheckoutController {
 
     /// "Back" to the method list from a form.
     public var canGoBack: Bool {
-        if case .form = screen { return !isBusy && methods.count > 1 }
+        if case .form = screen { return !isWorking && methods.count > 1 }
         return false
     }
 
@@ -144,7 +151,7 @@ public final class CheckoutController {
 
     /// Starts loading. Called once by the presenter.
     public func start() {
-        guard !started else { return }
+        guard !started, result == nil else { return }
         started = true
         load()
     }
@@ -212,15 +219,17 @@ public final class CheckoutController {
             return
         }
         let config: SdkConfigResponse?
-        if session.transaction.status == .pending || session.transaction.status == .processing || session.transaction.status == .partial {
-            config = await configTask.value
-        } else {
+        if session.transaction.status.isPaid || CheckoutController.endedStatuses.contains(session.transaction.status) {
             configTask.cancel()
             config = nil
+        } else {
+            config = await configTask.value
         }
         guard !Task.isCancelled, result == nil else { return }
         sessionLoaded(session, config: config)
     }
+
+    static let endedStatuses: Set<TransactionStatus> = [.failed, .cancelled, .expired]
 
     private func readyTimedOut(_ milliseconds: Int) {
         guard !isReady, result == nil else { return }
@@ -330,7 +339,7 @@ public final class CheckoutController {
 
     /// Opens a method's form (`COLLECTING_DETAILS`).
     public func selectMethod(_ id: String) {
-        guard result == nil, !isBusy, let method = methods.first(where: { $0.id == id }), method.isEnabled else { return }
+        guard result == nil, !isWorking, let method = methods.first(where: { $0.id == id }), method.isEnabled else { return }
         openForm(method)
         screen = .form
         update()
@@ -398,7 +407,7 @@ public final class CheckoutController {
 
     /// Validates the Mobile Money form and pays.
     public func submitMobileMoney() {
-        guard result == nil, !isBusy, let form = mobileMoney else { return }
+        guard result == nil, !isWorking, let form = mobileMoney else { return }
         if form.hasNoOperator {
             banner = .catalogue(WajubError.Code.operatorUnavailable, language)
             update()
@@ -427,7 +436,7 @@ public final class CheckoutController {
     /// Pays by card with the method's flavour: collects the card (Stripe), opens a client session, or
     /// sends the hosted page's fields or the sandbox test card.
     public func submitCard() {
-        guard result == nil, !isBusy, case .card(let flavour)? = currentMethod?.kind, let form = cardForm else { return }
+        guard result == nil, !isWorking, case .card(let flavour)? = currentMethod?.kind, let form = cardForm else { return }
         let errors = form.validate(language)
         guard errors.isEmpty else {
             fieldErrors = errors
@@ -444,13 +453,14 @@ public final class CheckoutController {
             if let returnURL = options.returnURL { data["return_url"] = .string(returnURL) }
             pay(channel: "card", data: data, family: "card", mobileMoney: false)
         case .sandboxForm:
+            if let returnURL = options.returnURL { data["return_url"] = .string(returnURL) }
             pay(channel: "card", data: data, family: "card", mobileMoney: false)
         }
     }
 
     private func collectCard(publishableKey: String) {
         guard let collector = options.cardCollector, let transaction = session?.transaction else { return }
-        isBusy = true
+        isCollectingCard = true
         banner = nil
         update()
         let request = CardCollectionRequest(publishableKey: publishableKey, amount: transaction.amountTotal,
@@ -459,9 +469,9 @@ public final class CheckoutController {
         workTask = Task { [weak self] in
             do {
                 let paymentMethod = try await collector.collectPaymentMethod(request)
-                guard let self, self.result == nil else { return }
-                self.isBusy = false
-                guard let paymentMethod else {
+                guard let self else { return }
+                self.isCollectingCard = false
+                guard self.result == nil, case .form = self.screen, let paymentMethod else {
                     self.update()
                     return
                 }
@@ -470,7 +480,8 @@ public final class CheckoutController {
                 self.pay(channel: "card", data: data, family: "card", mobileMoney: false)
             } catch {
                 guard let self else { return }
-                self.isBusy = false
+                self.isCollectingCard = false
+                guard self.result == nil, case .form = self.screen else { return }
                 self.banner = (error as? WajubError)
                     ?? WajubError(type: .paymentError, code: "card_collection_failed", message: error.localizedDescription, retryable: true)
                 self.update()
@@ -478,9 +489,10 @@ public final class CheckoutController {
         }
     }
 
-    private func startClientSession(fields: [String: String]) {
+    private func startClientSession(fields: [String: String], securityRetry: Bool = false) {
         guard let channel = currentMethod?.channels.first else { return }
-        attempt = Attempt(family: "card", channel: channel.slug, startedAt: clock.now)
+        let attempt = Attempt(family: "card", channel: channel.slug, startedAt: clock.now)
+        self.attempt = attempt
         isBusy = true
         banner = nil
         fieldErrors = [:]
@@ -496,8 +508,20 @@ public final class CheckoutController {
             } catch is CancellationError {
                 return
             } catch {
+                guard self.isCurrent(attempt.key) else { return }
                 self.attempt?.inFlight = false
                 self.fail(WajubSession.transportError(error, self.language))
+                return
+            }
+            guard self.isCurrent(attempt.key) else { return }
+            if self.isSecurityRefusal(answer) {
+                if securityRetry {
+                    self.attempt?.inFlight = false
+                    self.fail(.catalogue(WajubError.Code.securityCheckFailed, self.language))
+                } else {
+                    await self.renewAltcha()
+                    self.startClientSession(fields: fields, securityRetry: true)
+                }
                 return
             }
             self.handlePaymentAnswer(answer, mobileMoney: false, clientSession: true)
@@ -508,7 +532,7 @@ public final class CheckoutController {
 
     /// One tap: pays a wallet such as Djamo and follows its page.
     public func payWallet() {
-        guard result == nil, !isBusy, let method = currentMethod, method.kind == .wallet, let channel = method.channels.first else { return }
+        guard result == nil, !isWorking, let method = currentMethod, method.kind == .wallet, let channel = method.channels.first else { return }
         var data: [String: JSONValue] = [:]
         if let returnURL = options.returnURL { data["return_url"] = .string(returnURL) }
         pay(channel: channel.slug, data: data, family: "wallet", mobileMoney: false)
@@ -550,10 +574,11 @@ public final class CheckoutController {
                 return
             } catch {
                 // No answer after the retries: the outcome is unknown, never a failure.
+                guard self.isCurrent(key) else { return }
                 self.unknownOutcome()
                 return
             }
-            guard self.result == nil else { return }
+            guard self.isCurrent(key) else { return }
             if !securityRetry, self.isSecurityRefusal(answer) {
                 await self.renewAltcha()
                 self.pay(channel: channel, data: data.filter { $0.key != "altcha" && $0.key != "_client" }, family: family,
@@ -768,9 +793,17 @@ public final class CheckoutController {
     /// "Continue payment": reopens the provider page.
     public func continuePayment() {
         guard result == nil, let url = attempt?.continueURL else { return }
-        if case .failed = screen {
+        switch screen {
+        case .failed:
             screen = .pending(PendingScreen(continueURL: url))
             startWatching()
+        case .pending(let pending) where pending.capReached:
+            // The payer is back at it: a new watch window.
+            attempt?.startedAt = clock.now
+            screen = .pending(PendingScreen(continueURL: url))
+            startWatching()
+        default:
+            break
         }
         launchBrowser(url)
     }
@@ -782,12 +815,24 @@ public final class CheckoutController {
         payerReturned()
     }
 
-    /// The app came back to the foreground (or a deep link arrived): poll at once.
-    public func appDidBecomeActive() {
-        guard result == nil, watcher != nil else { return }
+    /// The app came back from the background (a wallet's app, the browser) or a deep link arrived: poll at once.
+    public func appWillEnterForeground() {
+        guard result == nil else { return }
+        if watcher == nil {
+            // After the watch cap: one look at the status.
+            if case .pending = screen, attempt != nil { checkStatusOnce() }
+            return
+        }
         if isBrowserOpen, attempt?.family != "card" { isBrowserOpen = false }
         update()
         payerReturned()
+    }
+
+    private func checkStatusOnce() {
+        workTask = Task { [weak self] in
+            guard let self, let answer = try? await self.client.send(.status), answer.isSuccess, self.result == nil else { return }
+            self.statusUpdated(StatusResponse(json: answer.body ?? .null).transaction)
+        }
     }
 
     private func payerReturned() {
@@ -800,16 +845,18 @@ public final class CheckoutController {
     }
 
     private func completeClientSession(_ session: ClientSession) {
+        let key = attempt?.key
         workTask = Task { [weak self] in
             guard let self else { return }
             let answer: APIAnswer
             do {
                 answer = try await self.client.send(.clientSessionComplete, body: ["client_session_id": .string(session.id)])
             } catch {
+                guard self.isCurrent(key) else { return }
                 self.watcher?.pollNow()
                 return
             }
-            guard self.result == nil else { return }
+            guard self.isCurrent(key) else { return }
             let body = answer.body.map(APIErrorBody.init(json:))
             switch answer.status {
             case 200...299:
@@ -841,7 +888,7 @@ public final class CheckoutController {
 
     /// Verifies a step: `code` (OTP), `pin`, `phone`, `birthday` (`YYYY-MM-DD`), or `address`, `city`, `state`, `zip_code`.
     public func submitStep(_ fields: [String: String]) {
-        guard result == nil, !isBusy, case .step(var step) = screen else { return }
+        guard result == nil, !isWorking, case .step(var step) = screen else { return }
         let fields = fields.mapValues { $0.trimmingCharacters(in: .whitespaces) }
         let errors = CheckoutController.validateStep(step.kind, fields: fields, language: language)
         guard errors.isEmpty else {
@@ -854,6 +901,7 @@ public final class CheckoutController {
         screen = .step(step)
         isBusy = true
         update()
+        let key = attempt?.key
         workTask = Task { [weak self] in
             guard let self else { return }
             let answer: APIAnswer
@@ -863,6 +911,7 @@ public final class CheckoutController {
                 return
             } catch {
                 // Never retried: let the payer try again, and look at the status.
+                guard self.isCurrent(key) else { return }
                 self.isBusy = false
                 step.error = WajubSession.transportError(error, self.language)
                 self.screen = .step(step)
@@ -870,12 +919,12 @@ public final class CheckoutController {
                 self.watcher?.pollNow()
                 return
             }
+            guard self.isCurrent(key) else { return }
             self.handleStepAnswer(answer, step: step)
         }
     }
 
     private func handleStepAnswer(_ answer: APIAnswer, step: StepScreen) {
-        guard result == nil else { return }
         isBusy = false
         var step = step
         switch answer.status {
@@ -986,7 +1035,7 @@ public final class CheckoutController {
     }
 
     public func submitThreeDSCode(_ code: String) {
-        guard result == nil, !isBusy, case .threeDS(var challenge) = screen else { return }
+        guard result == nil, !isWorking, case .threeDS(var challenge) = screen else { return }
         let code = code.trimmingCharacters(in: .whitespaces)
         guard code.allSatisfy(\.isNumber), (4...8).contains(code.count) else {
             fieldErrors = ["code": .catalogue(code.isEmpty ? WajubError.Code.fieldRequired : WajubError.Code.invalidCode, language)]
@@ -998,6 +1047,7 @@ public final class CheckoutController {
         screen = .threeDS(challenge)
         isBusy = true
         update()
+        let key = attempt?.key
         workTask = Task { [weak self] in
             guard let self else { return }
             let answer: APIAnswer
@@ -1006,6 +1056,7 @@ public final class CheckoutController {
             } catch is CancellationError {
                 return
             } catch {
+                guard self.isCurrent(key) else { return }
                 self.isBusy = false
                 challenge.error = WajubSession.transportError(error, self.language)
                 self.screen = .threeDS(challenge)
@@ -1013,7 +1064,7 @@ public final class CheckoutController {
                 self.watcher?.pollNow()
                 return
             }
-            guard self.result == nil else { return }
+            guard self.isCurrent(key) else { return }
             self.isBusy = false
             if answer.isSuccess {
                 challenge.accepted = true
@@ -1093,7 +1144,7 @@ public final class CheckoutController {
 
     /// Decides on a status from a poll or the socket (README §13.2).
     private func statusUpdated(_ update: StatusUpdate) {
-        guard result == nil, attempt != nil else { return }
+        guard result == nil, attempt != nil, !showsOutcome else { return }
         let status = update.status
         if let transaction = lastTransaction {
             var copy = transaction
@@ -1134,8 +1185,8 @@ public final class CheckoutController {
         if let entry = ErrorCatalogue.entries[code] {
             error = WajubError(type: entry.type, code: code, message: entry.message(language), retryable: true)
         } else {
-            let message = language == .en ? (update.payerMessage ?? ErrorCatalogue.genericDecline.en) : ErrorCatalogue.genericDecline.fr
-            error = WajubError(type: .paymentError, code: code, message: message, retryable: true)
+            // A provider's own decline code: the same text as a 402 with that code (errors.md §3.4).
+            error = WajubError(type: .paymentError, code: code, message: ErrorCatalogue.genericDecline.message(language), retryable: true)
         }
         error.declineCode = code
         error.apiMessage = update.payerMessage
@@ -1171,7 +1222,8 @@ public final class CheckoutController {
     // MARK: Outcomes
 
     private func succeed(_ transaction: SessionTransaction) {
-        guard result == nil else { return }
+        guard result == nil, !showsOutcome else { return }
+        workTask?.cancel()
         stopWatching()
         threeDSTimer?.cancel()
         isBusy = false
@@ -1185,7 +1237,8 @@ public final class CheckoutController {
     }
 
     private func fail(_ error: WajubError) {
-        guard result == nil else { return }
+        guard result == nil, !showsOutcome else { return }
+        workTask?.cancel()
         stopWatching()
         threeDSTimer?.cancel()
         isBusy = false
@@ -1195,7 +1248,8 @@ public final class CheckoutController {
     }
 
     private func expire(_ error: WajubError) {
-        guard result == nil else { return }
+        guard result == nil, !showsOutcome else { return }
+        workTask?.cancel()
         stopWatching()
         threeDSTimer?.cancel()
         isBusy = false
@@ -1221,6 +1275,19 @@ public final class CheckoutController {
         WajubError.Code.invalidAddress, WajubError.Code.addressExpired, WajubError.Code.maxAttemptsExceeded, WajubError.Code.invalidCode,
         WajubError.Code.threeDSFailed, WajubError.Code.threeDSRejected, WajubError.Code.threeDSCancelled, WajubError.Code.threeDSTimeout,
     ]
+
+    /// The sheet shows an outcome: answers that arrive later change nothing.
+    private var showsOutcome: Bool {
+        switch screen {
+        case .success, .failed, .expired, .cancelled, .ended: return true
+        default: return false
+        }
+    }
+
+    /// An answer belongs to the attempt still on screen.
+    private func isCurrent(_ key: String?) -> Bool {
+        result == nil && !showsOutcome && attempt?.key == key
+    }
 
     /// "Try again" from a retryable failure: back to the method's form (to the method list after a
     /// confirmation step), a new `Idempotency-Key` on the next Pay.
@@ -1257,13 +1324,13 @@ public final class CheckoutController {
     public func cancelPayment() {
         guard canCancelPayment else { return }
         isClosing = true
-        isBusy = true
+        isCancelling = true
         update()
         workTask = Task { [weak self] in
             guard let self else { return }
             let answer = try? await self.client.send(.cancel)
             guard self.result == nil else { return }
-            self.isBusy = false
+            self.isCancelling = false
             if let answer, answer.status == 400 {
                 await self.resolveRefusedCancel(reason: .payerCancelled)
                 return
@@ -1279,27 +1346,43 @@ public final class CheckoutController {
     private func resolveRefusedCancel(reason: CancelReason) async {
         let answer = try? await client.send(.status)
         guard result == nil else { return }
-        let update = answer.flatMap { $0.isSuccess ? StatusResponse(json: $0.body ?? .null).transaction : nil }
-        switch update?.status {
+        isCancelling = false
+        let status = answer.flatMap { $0.isSuccess ? StatusResponse(json: $0.body ?? .null).transaction.status : nil }
+        var transaction = lastTransaction ?? session?.transaction
+        if let status { transaction?.status = status }
+        switch status {
         case let status? where status.isPaid:
-            if var transaction = lastTransaction ?? session?.transaction {
-                transaction.status = status
+            guard let transaction else { return finish(.processing(transaction: nil)) }
+            if reason == .payerCancelled, !showsOutcome {
+                isClosing = false
+                succeed(transaction)
+            } else {
                 let payment = PaymentSuccess(transaction: transaction, method: attempt?.family ?? "unknown", now: clock.now)
-                if reason == .payerCancelled {
-                    isClosing = false
-                    succeed(transaction)
-                } else {
-                    finish(.complete(payment: payment, transaction: transaction))
-                }
+                emit { try self.options.callbacks.onSuccess?(payment) }
+                finish(.complete(payment: payment, transaction: transaction))
             }
-        case .failed?:
-            finish(.failed(error: .catalogue(WajubError.Code.paymentFailed, language), transaction: lastTransaction))
-        case .expired?:
-            finish(.failed(error: .catalogue(WajubError.Code.sessionExpired, language), transaction: lastTransaction))
-        default:
-            screen = .cancelled(nil)
-            self.update()
+        case .failed?, .expired?:
+            let error = WajubError.catalogue(status == .failed ? WajubError.Code.paymentFailed : WajubError.Code.sessionExpired, language)
+            emit { try self.options.callbacks.onError?(error) }
+            finish(.failed(error: error, transaction: transaction))
+        case .pending?, .cancelled?:
+            if reason == .payerCancelled {
+                screen = .cancelled(nil)
+                self.update()
+            }
             finish(.cancelled(reason: reason, redirectURL: nil))
+        default:
+            // `processing`, `partial`, or no readable answer: money may move.
+            if reason == .payerCancelled {
+                isClosing = false
+                attempt = Attempt(family: attempt?.family ?? "unknown", channel: attempt?.channel ?? "", startedAt: clock.now,
+                                  seenProcessing: status != nil)
+                screen = .pending(PendingScreen())
+                self.update()
+                startWatching()
+            } else {
+                finish(.processing(transaction: transaction))
+            }
         }
     }
 
@@ -1366,6 +1449,8 @@ public final class CheckoutController {
         for task in [loadTask, readyTimer, autoCloseTask, threeDSTimer, workTask] { task?.cancel() }
         altchaTask?.cancel()
         isBusy = false
+        isCancelling = false
+        isCollectingCard = false
         if case .cancelled(let reason, let redirectURL) = result {
             emit { try self.options.callbacks.onCancel?(CancelEvent(reason: reason, redirectURL: redirectURL)) }
         }

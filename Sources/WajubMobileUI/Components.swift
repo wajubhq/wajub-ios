@@ -1,4 +1,4 @@
-#if canImport(UIKit) && canImport(SwiftUI)
+#if os(iOS)
 import SwiftUI
 import UIKit
 import WajubMobile
@@ -20,7 +20,8 @@ struct PrimaryButton: View {
                     .opacity(busy ? 0 : 1)
                 if busy {
                     ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: style.onPrimary))
+                        .progressViewStyle(.circular)
+                        .tint(style.onPrimary)
                 }
             }
             .foregroundColor(style.onPrimary)

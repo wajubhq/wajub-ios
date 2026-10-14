@@ -156,6 +156,22 @@ final class AppearanceTests: XCTestCase {
         XCTAssertEqual(darkTheme.tokens.surfaceMuted.hex, "#262626")
         XCTAssertEqual(darkTheme.tokens.primary.hex, "#0F766E")
 
+        // The merchant's background, in the scheme it was designed for.
+        let cream = try SessionResponse(json: Fixtures.body("session-cm-aggregate").setting(["branding", "background_color"], to: "#FFF7ED"))
+        XCTAssertEqual(ThemeResolver.resolve(appearance: nil, branding: cream.branding, system: .light).tokens.background.hex, "#FFF7ED")
+        XCTAssertEqual(ThemeResolver.resolve(appearance: nil, branding: cream.branding, system: .light).tokens.inputBackground.hex, "#FFFFFF",
+                       "input_background_color")
+
+        // Weights as words; the merchant's button text only with the merchant's primary.
+        let words = try SessionResponse(json: Fixtures.body("session-cm-aggregate").setting(["branding", "font_weight_heading"], to: "bold")
+            .setting(["branding", "font_weight_body"], to: "normal"))
+        XCTAssertEqual(words.branding.fontWeightHeading, 700)
+        XCTAssertEqual(words.branding.fontWeightBody, 400)
+        let paleWithText = try SessionResponse(json: Fixtures.body("session-cm-aggregate").setting(["branding", "primary_color"], to: "#FFFF66")
+            .setting(["branding", "button_text_color"], to: "#111111"))
+        XCTAssertEqual(ThemeResolver.resolve(appearance: nil, branding: paleWithText.branding, system: .light).tokens.onPrimary.hex, "#FFFFFF",
+                       "computed for the default primary")
+
         // Merchant radius tokens.
         XCTAssertEqual(AppearanceValue.brandingRadius("lg"), 12)
         XCTAssertEqual(AppearanceValue.brandingRadius("none"), 0)
@@ -188,9 +204,11 @@ final class AppearanceTests: XCTestCase {
         XCTAssertEqual(resolved.tokens.textSecondary.hex, "#94A3B8")
         XCTAssertEqual(resolved.shadow, AppearanceShadow.none)
         XCTAssertEqual(ThemeResolver.resolve(appearance: Appearance(theme: .flat), branding: merchant, system: .light).shape.radius, 0)
-        // The stripe stack names no family an app ships: the platform's font.
-        XCTAssertEqual(ThemeResolver.resolve(appearance: Appearance(theme: .stripe), branding: nil, system: .light).shape.fontFamilies,
-                       ["Segoe UI", "Roboto"])
+        // The stripe stack starts with the system font: the platform's font, not Inter.
+        XCTAssertEqual(ThemeResolver.resolve(appearance: Appearance(theme: .stripe), branding: nil, system: .light).shape.fontFamilies, [])
+        XCTAssertEqual(AppearanceValue.fontStack("'Avenir Next', Roboto, sans-serif, Lato"), ["Avenir Next", "Roboto"])
+        XCTAssertEqual(ThemeResolver.resolve(appearance: nil, branding: nil, system: .light).shape.fontFamilies, ["Inter"],
+                       "Inter by default, if the app ships it")
     }
 
     /// AP-07 draws the loader
@@ -215,7 +233,7 @@ final class AppearanceTests: XCTestCase {
         let host = InheritedTheme(scheme: .dark, primary: RGBAColor(css: "#1A1A1A"), background: RGBAColor(css: "#000000"),
                                   text: RGBAColor(css: "#EEEEEE"), textSecondary: RGBAColor(css: "#333333"),
                                   inputBorder: RGBAColor(css: "#444444"), fontFamily: "Avenir", borderRadius: 30)
-        let usable = host.usable(defaultBackground: ThemeTokens.defaults(.dark).background)
+        let usable = host.usable(against: RGBAColor(css: "#000000")!)
         XCTAssertNil(usable.primary, "under 3:1 against the background")
         XCTAssertEqual(usable.text?.hex, "#EEEEEE")
         XCTAssertNil(usable.textSecondary, "under 4.5:1")

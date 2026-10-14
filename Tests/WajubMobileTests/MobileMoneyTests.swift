@@ -39,7 +39,9 @@ final class MobileMoneyTests: XCTestCase {
 
     /// MM-03 matches the preselection vectors
     func test_MM_03_matchesThePreselectionVectors() {
-        for vector in Fixtures.vectors["preselection"]?.array ?? [] {
+        let vectors = Fixtures.vectors["preselection"]?.array ?? []
+        XCTAssertFalse(vectors.isEmpty)
+        for vector in vectors {
             let choices = vector["choices"]?.strings ?? []
             let country = vector["country"]?.string ?? ""
             let phone = vector["phone"]?.string ?? ""
@@ -87,7 +89,9 @@ final class MobileMoneyTests: XCTestCase {
 
     /// MM-05 builds the mobile money request
     @MainActor func test_MM_05_buildsTheMobileMoneyRequest() async {
-        for vector in Fixtures.vectors["operator_hint"]?.array ?? [] {
+        let hints = Fixtures.vectors["operator_hint"]?.array ?? []
+        XCTAssertFalse(hints.isEmpty)
+        for vector in hints {
             let slug = vector["channel"]?.string ?? ""
             let session = Fixtures.session(slug.hasPrefix("cm") ? "session-cm-aggregate" : "session-ci-xof-wallets")
             let channel = session.channels.first { $0.slug == slug }!

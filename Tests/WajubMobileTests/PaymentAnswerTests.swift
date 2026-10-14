@@ -266,9 +266,37 @@ final class PaymentAnswerTests: XCTestCase {
         XCTAssertEqual(card.transport.requests("POST", "/pay/client-session")[0].json?["return_url"]?.string,
                        "https://shop.example.com/app-return")
         cardController.hostGone()
+
+        let sandbox = Harness(session: "session-sandbox-cm")
+        sandbox.transport.answer("process-requires-3ds-sandbox")
+        let test = await sandbox.start { $0.returnURL = "https://shop.example.com/app-return" }
+        test.selectMethod("card")
+        for (field, value) in ["card.number": "4000056655665556", "card_holder": "A N", "expiry_month": "12", "expiry_year": "30", "cvv": "123"] {
+            test.setCardField(field, value)
+        }
+        test.submitCard()
+        await waitUntil("sent") { sandbox.processBodies().count == 1 }
+        XCTAssertEqual(sandbox.processBodies()[0]["data"]?["return_url"]?.string, "https://shop.example.com/app-return")
+        test.hostGone()
     }
 
     /// RD-03 polls on return
+    @MainActor func test_RD_03_reopensAfterTheCap() async {
+        let harness = await Harness.mobileMoney(answers: "process-redirect-wallet-djamo", "status-processing")
+        harness.controller.submitMobileMoney()
+        await waitUntil("pending") { harness.controller.state == .pending && !harness.browser.opened.isEmpty }
+        await harness.drive(until: "cap", maxSteps: 200) {
+            if case .pending(let pending) = harness.controller.screen { return pending.capReached }
+            return false
+        }
+        let polls = harness.transport.requests("GET", "/pay/status").count
+        harness.controller.continuePayment()
+        await waitUntil("reopened") { harness.browser.opened.count == 2 }
+        await harness.advance(by: 5)
+        XCTAssertEqual(harness.transport.requests("GET", "/pay/status").count, polls + 1, "a new watch window")
+        harness.controller.hostGone()
+    }
+
     @MainActor func test_RD_03_pollsOnReturn() async {
         let harness = await Harness.mobileMoney(answers: "process-redirect-card-hosted", "status-succeeded")
         harness.controller.submitMobileMoney()
@@ -282,7 +310,7 @@ final class PaymentAnswerTests: XCTestCase {
         let foreground = await Harness.mobileMoney(answers: "process-redirect-wallet-djamo", "status-succeeded")
         foreground.controller.submitMobileMoney()
         await waitUntil("pending") { foreground.controller.state == .pending }
-        foreground.controller.appDidBecomeActive()
+        foreground.controller.appWillEnterForeground()
         await waitUntil("success") { foreground.controller.state == .success }
         foreground.controller.hostGone()
     }

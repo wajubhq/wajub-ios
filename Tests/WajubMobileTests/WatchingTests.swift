@@ -58,6 +58,9 @@ final class WatchingTests: XCTestCase {
         await harness.clock.advance(by: 120)
         XCTAssertEqual(harness.transport.requests("GET", "/pay/status").count, polls, "stopped at the cap")
         XCTAssertEqual(harness.controller.strings.pendingCapBody, "Paiement en cours — vous serez notifié.")
+        // Back in the app after the cap: one look at the status.
+        harness.controller.appWillEnterForeground()
+        await waitUntil("checked once") { harness.transport.requests("GET", "/pay/status").count == polls + 1 }
         harness.controller.close()
         XCTAssertEqual(harness.controller.result?.status, "processing")
     }

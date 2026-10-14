@@ -64,9 +64,11 @@ public struct MobileMoneyForm: Equatable, Sendable {
             country = requested
             countryLocked = options.countryLocked
         } else {
-            country = geoCountry.flatMap { countries.contains($0) ? $0 : nil } ?? countries.first ?? geoCountry ?? ""
+            let coversAll = channels.contains { $0.countries.isEmpty }
+            country = geoCountry.flatMap { countries.contains($0) || coversAll ? $0 : nil } ?? countries.first ?? geoCountry ?? ""
             countryLocked = false
         }
+        if !country.isEmpty, !self.countries.contains(country) { self.countries.insert(country, at: 0) }
         refreshChoices()
     }
 
@@ -79,8 +81,8 @@ public struct MobileMoneyForm: Equatable, Sendable {
     public var formattedPhone: String { data.formatAsYouType(phone) }
     public var detectedOperator: String? { data.detectOperator(phone, country: country) }
     public var selectedChoice: OperatorChoice? { choices.first { $0.id == selection } }
-    /// `operator_unavailable`: no operator for the country; Pay is disabled.
-    public var hasNoOperator: Bool { choices.isEmpty }
+    /// `operator_unavailable`: no operator the payer can pick for the country; Pay is disabled.
+    public var hasNoOperator: Bool { !choices.contains { $0.limit == nil } }
 
     /// In `detect` mode the list stays hidden until the number (≥ 6 digits) names no offered operator,
     /// an operator-independent wallet is offered while the number names one, or the payer opens it.
@@ -115,12 +117,12 @@ public struct MobileMoneyForm: Equatable, Sendable {
     mutating func setPhone(_ text: String) {
         phone = String(data.sanitize(text).prefix(15))
         selection = MobileMoneyForm.preselect(current: selection, pickedByHand: pickedByHand, detected: detectedOperator,
-                                              choiceIds: choices.map(\.id))
+                                              choiceIds: enabledIds)
     }
 
-    /// A pick by hand is never overridden by detection.
+    /// A pick by hand is never overridden by detection. An operator out of its limits cannot be picked.
     mutating func pick(_ id: String) {
-        guard choices.contains(where: { $0.id == id }) else { return }
+        guard choices.contains(where: { $0.id == id && $0.limit == nil }) else { return }
         selection = id
         pickedByHand = true
     }
@@ -129,12 +131,15 @@ public struct MobileMoneyForm: Equatable, Sendable {
         listOpened = true
     }
 
+    /// The ids the payer can pick (operators out of their amount limits are shown disabled).
+    private var enabledIds: [String] {
+        choices.filter { $0.limit == nil }.map(\.id)
+    }
+
     private mutating func refreshChoices() {
         choices = MobileMoneyForm.choices(channels: channels, country: country, config: config, language: language, amount: amount)
-            .filter { $0.limit == nil }
-        selection = choices.first?.id
-        selection = MobileMoneyForm.preselect(current: selection, pickedByHand: false, detected: detectedOperator,
-                                              choiceIds: choices.map(\.id))
+        selection = enabledIds.first
+        selection = MobileMoneyForm.preselect(current: selection, pickedByHand: false, detected: detectedOperator, choiceIds: enabledIds)
     }
 
     // MARK: Submit

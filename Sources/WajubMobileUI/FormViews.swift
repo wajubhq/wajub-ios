@@ -1,4 +1,4 @@
-#if canImport(UIKit) && canImport(SwiftUI)
+#if os(iOS)
 import SwiftUI
 import UIKit
 import WajubMobile
@@ -133,7 +133,7 @@ struct MobileMoneyFormView: View {
                 if let warning = controller.warning {
                     BannerView(message: warning.message, foreground: style.warning, background: style.warningBackground, style: style)
                 }
-                PrimaryButton(title: model.strings.pay(controller.formattedAmount), style: style, busy: controller.isBusy,
+                PrimaryButton(title: model.strings.pay(controller.formattedAmount), style: style, busy: controller.isWorking,
                               enabled: !form.hasNoOperator) {
                     controller.submitMobileMoney()
                 }
@@ -165,17 +165,12 @@ struct MobileMoneyFormView: View {
 
     private func phoneField(_ form: MobileMoneyForm) -> some View {
         let controller = model.controller
-        let phone = Binding<String>(get: { controller.mobileMoney?.formattedPhone ?? "" }, set: { controller.setPhone($0) })
         return FieldBox(label: model.strings.mobileMoneyNumber, error: controller.fieldErrors["data.phone"]?.message, style: style) {
             HStack(spacing: style.unit * 2) {
                 Text(form.dialCode)
                     .font(style.input)
                     .foregroundColor(style.textSecondary)
-                TextField(form.placeholder, text: phone)
-                    .font(style.input)
-                    .foregroundColor(style.text)
-                    .keyboardType(.phonePad)
-                    .textContentType(.telephoneNumber)
+                PhoneInput(model: model, style: style, placeholder: form.placeholder)
                 if form.operatorMode == .detect && !form.isOperatorListVisible, let badge = form.badgeChoice {
                     OperatorLogo(choice: badge, size: 24)
                     if form.choices.count > 1 {
@@ -199,9 +194,16 @@ struct MobileMoneyFormView: View {
                 } label: {
                     HStack(spacing: style.gapColumn) {
                         OperatorLogo(choice: choice)
-                        Text(choice.label)
-                            .font(style.body)
-                            .foregroundColor(style.text)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(choice.label)
+                                .font(style.body)
+                                .foregroundColor(style.text)
+                            if let limit = choice.limit {
+                                Text(limitText(limit))
+                                    .font(style.hint)
+                                    .foregroundColor(style.textSecondary)
+                            }
+                        }
                         Spacer()
                         Image(systemName: selected ? "largecircle.fill.circle" : "circle")
                             .foregroundColor(selected ? style.primary : style.inputBorder)
@@ -212,8 +214,10 @@ struct MobileMoneyFormView: View {
                     .overlay(RoundedRectangle(cornerRadius: style.radius)
                         .strokeBorder(selected ? style.primary : style.inputBorder, lineWidth: selected ? 2 : 1))
                     .contentShape(Rectangle())
+                    .opacity(choice.limit == nil ? 1 : 0.5)
                 }
                 .buttonStyle(.plain)
+                .disabled(choice.limit != nil)
                 .accessibilityAddTraits(selected ? .isSelected : [])
             }
             if let error = controller.fieldErrors["data.operator"] {
@@ -222,6 +226,38 @@ struct MobileMoneyFormView: View {
                     .foregroundColor(style.danger)
             }
         }
+    }
+
+    private func limitText(_ limit: AmountLimit) -> String {
+        switch limit {
+        case .minimum(let amount): return model.strings.minimum(model.controller.formatAmount(amount))
+        case .maximum(let amount): return model.strings.maximum(model.controller.formatAmount(amount))
+        }
+    }
+}
+
+/// The number field: what the payer types stays in the field, then shows formatted as you type.
+@MainActor
+struct PhoneInput: View {
+    @ObservedObject var model: CheckoutViewModel
+    let style: SheetStyle
+    let placeholder: String
+    @State private var text = ""
+
+    var body: some View {
+        TextField(placeholder, text: $text)
+            .font(style.input)
+            .foregroundColor(style.text)
+            .keyboardType(.phonePad)
+            .textContentType(.telephoneNumber)
+            .onAppear {
+                text = model.controller.mobileMoney?.formattedPhone ?? ""
+            }
+            .onChange(of: text) { typed in
+                model.controller.setPhone(typed)
+                let formatted = model.controller.mobileMoney?.formattedPhone ?? ""
+                if formatted != typed { text = formatted }
+            }
     }
 }
 
@@ -253,7 +289,7 @@ struct CardFormView: View {
                 EmptyView()
             }
             PrimaryButton(title: isStripe ? strings.payByCard : strings.pay(controller.formattedAmount), style: style,
-                          busy: controller.isBusy) {
+                          busy: controller.isWorking) {
                 controller.submitCard()
             }
         }
@@ -285,7 +321,7 @@ struct CardFormView: View {
         switch field {
         case "email": return .emailAddress
         case "phone": return .phonePad
-        case "card.number", "expiry_month", "expiry_year", "cvv", "zip_code": return .numberPad
+        case "card.number", "expiry_month", "expiry_year", "cvv": return .numberPad
         default: return .default
         }
     }
@@ -328,7 +364,7 @@ struct WalletView: View {
             Text(model.strings.walletHint(name))
                 .font(style.body)
                 .foregroundColor(style.textSecondary)
-            PrimaryButton(title: model.strings.payWith(name), style: style, busy: controller.isBusy) {
+            PrimaryButton(title: model.strings.payWith(name), style: style, busy: controller.isWorking) {
                 controller.payWallet()
             }
         }

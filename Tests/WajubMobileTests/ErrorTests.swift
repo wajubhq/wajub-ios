@@ -213,5 +213,19 @@ final class ErrorTests: XCTestCase {
         XCTAssertEqual(refused.transport.requests("POST", "/pay/process").count, 2)
         XCTAssertEqual(refused.transport.requests("GET", "/pay/session").count, 2, "one reload")
         refusedController.hostGone()
+
+        // The same on /pay/client-session.
+        let cardRefused = Harness(config: "sdk-config-card-paystack")
+        cardRefused.transport.on("GET", "/pay/session", .json(200, session))
+        cardRefused.transport.on("POST", "/pay/client-session", .json(422, ["code": 422, "message": "Security challenge verification failed",
+                                                                           "errors": ["altcha": ["Security challenge verification failed"]]]))
+        let cardRefusedController = await cardRefused.start()
+        cardRefusedController.selectMethod("card")
+        cardRefusedController.submitCard()
+        await waitUntil("failed") { cardRefusedController.state == .failed }
+        guard case .failed(let cardError) = cardRefusedController.screen else { return XCTFail("not failed") }
+        XCTAssertEqual(cardError.code, WajubError.Code.securityCheckFailed)
+        XCTAssertEqual(cardRefused.transport.requests("POST", "/pay/client-session").count, 2)
+        cardRefusedController.hostGone()
     }
 }
