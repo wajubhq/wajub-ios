@@ -62,14 +62,9 @@ public final class CheckoutController {
     var config: SdkConfigResponse?
     var isReady = false
     var emittedState: CheckoutState?
-    var attempt: Attempt? {
-        didSet {
-            if attempt?.seenProcessing == true { sawProcessing = true }
-        }
-    }
-    /// An attempt of this sheet was seen `processing`: from then on `/pay/cancel` is never sent (the API
-    /// would cancel a payment the payer may still approve).
-    var sawProcessing = false
+    /// The attempt under way. It stays `inFlight` (undecided) from the Pay press until a definitive answer:
+    /// a 402, a `pending` with a new `error_code`, a step failure, a terminal status.
+    var attempt: Attempt?
     /// The session as soon as it answered, before sdk-config: a dismiss decides on its status at once.
     var answeredSession: SessionResponse?
     var lastTransaction: SessionTransaction?
@@ -162,10 +157,16 @@ public final class CheckoutController {
         }
     }
 
-    /// `POST /pay/cancel` is sent only for a session that loaded `pending`, with no attempt of this sheet
-    /// in flight or ever seen `processing` (README §14).
+    /// The payment's last status the sheet knows of: the session's, then what answers and the watch said.
+    var lastKnownStatus: TransactionStatus? {
+        lastTransaction?.status ?? (session ?? answeredSession)?.transaction.status
+    }
+
+    /// `POST /pay/cancel` is sent only once the session is loaded, the last status known is `pending`, and
+    /// no attempt is undecided (README §14): the API also cancels a `processing` payment, one the payer
+    /// may still approve. After a definitive refusal the payment is `pending` again, and cancellable.
     var mayCancel: Bool {
-        (session ?? answeredSession)?.transaction.status == .pending && attempt?.inFlight != true && !sawProcessing
+        (session ?? answeredSession) != nil && lastKnownStatus == .pending && attempt?.inFlight != true
     }
 
     /// "Back" to the method list from a form.

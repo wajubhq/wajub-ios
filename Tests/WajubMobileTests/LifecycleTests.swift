@@ -230,18 +230,42 @@ final class LifecycleTests: XCTestCase {
         waiting.dismiss()
         XCTAssertEqual(waiting.result, .cancelled(reason: .dismissed, redirectURL: nil))
 
-        // An attempt was seen processing, then ended: back on the form, still no cancel.
-        let ended = await Harness.mobileMoney(answers: "process-processing-mobile-money-sandbox", "status-pending-attempt-refused")
+        // An attempt is undecided from the Pay press: no cancel while approving. A refusal seen after
+        // `processing` (pending with a new error_code) decides it: the payment is pending again, and
+        // "Cancel payment" is offered again; a dismiss then cancels as before any attempt.
+        let ended = await Harness.mobileMoney(answers: "process-processing-mobile-money-sandbox", "status-pending-attempt-refused",
+                                              "cancel-200")
         ended.controller.submitMobileMoney()
+        XCTAssertFalse(ended.controller.canCancelPayment, "undecided from the Pay press")
         await waitUntil("approval") { ended.controller.state == .approvalRequired }
         XCTAssertFalse(ended.controller.canCancelPayment, "no Cancel payment while approving")
-        await ended.advance(by: 5)
-        XCTAssertEqual(ended.controller.state, .failed)
-        ended.controller.tryAgain()
-        XCTAssertEqual(ended.controller.state, .collectingDetails)
-        XCTAssertFalse(ended.controller.canCancelPayment)
         ended.controller.dismiss()
-        XCTAssertEqual(ended.controller.result, .cancelled(reason: .dismissed, redirectURL: nil))
+        XCTAssertEqual(ended.controller.result?.status, "processing", "a dismiss there sends nothing")
+        let refused = await Harness.mobileMoney(answers: "process-processing-mobile-money-sandbox", "status-pending-attempt-refused",
+                                                "cancel-200")
+        refused.controller.submitMobileMoney()
+        await waitUntil("approval") { refused.controller.state == .approvalRequired }
+        await refused.advance(by: 5)
+        XCTAssertEqual(refused.controller.state, .failed)
+        XCTAssertTrue(refused.controller.canCancelPayment, "a definitive refusal: cancellable again")
+        refused.controller.tryAgain()
+        XCTAssertEqual(refused.controller.state, .collectingDetails)
+        XCTAssertTrue(refused.controller.canCancelPayment)
+        refused.controller.dismiss()
+        await waitUntil("closed") { refused.controller.result != nil }
+        guard case .cancelled(.dismissed, let redirect)? = refused.controller.result else { return XCTFail("not cancelled") }
+        XCTAssertNotNil(redirect)
+        XCTAssertEqual(refused.transport.requests("POST", "/pay/cancel").count, 1)
+
+        // A session restored `processing` whose attempt is then refused is cancellable again too.
+        let restoredRefused = Harness(session: "session-processing-mobile-money")
+        restoredRefused.transport.answer("status-pending-attempt-refused")
+        let restoredSheet = await restoredRefused.start()
+        XCTAssertFalse(restoredSheet.canCancelPayment)
+        await restoredRefused.advance(by: 5)
+        XCTAssertEqual(restoredSheet.state, .failed)
+        XCTAssertTrue(restoredSheet.canCancelPayment)
+        restoredSheet.hostGone()
 
         // A decline that never reached processing leaves the payment cancellable.
         let declined = await Harness.mobileMoney(answers: "process-failed-402", "cancel-200")

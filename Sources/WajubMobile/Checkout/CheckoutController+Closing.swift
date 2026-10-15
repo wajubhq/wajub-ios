@@ -197,10 +197,10 @@ extension CheckoutController {
             finish(.cancelled(reason: .dismissed, redirectURL: nil))
             return
         }
-        // Once it has answered, its status decides at once (sdk-config may still be loading).
-        let status = loaded.transaction.status
+        // Once it has answered, the last status known decides at once (sdk-config may still be loading).
+        let status = lastKnownStatus ?? loaded.transaction.status
         if status == .processing || status == .partial {
-            finish(.processing(transaction: loaded.transaction))
+            finish(.processing(transaction: lastTransaction ?? loaded.transaction))
             return
         }
         guard options.cancelOnDismiss, mayCancel else {
