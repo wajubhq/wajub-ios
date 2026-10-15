@@ -1,6 +1,6 @@
 import Foundation
 
-/// The family of a `WajubError` (Wajub.js's `type`).
+/// The family of a `WajubError`.
 public enum WajubErrorType: String, Sendable, CaseIterable {
     case apiError = "api_error"
     case authenticationError = "authentication_error"
@@ -9,10 +9,10 @@ public enum WajubErrorType: String, Sendable, CaseIterable {
     case rateLimitError = "rate_limit_error"
 }
 
-/// Every failure the SDK reports: Wajub.js's `WajubError` plus the mobile fields.
+/// Every failure the SDK reports.
 ///
-/// `message` is for the payer, in the sheet's language; `apiMessage` keeps the API's own
-/// (English) text for your logs.
+/// `message` is for the payer, in the sheet's language; `apiMessage` keeps Wajub's own (English)
+/// text for your logs.
 public struct WajubError: Error, Equatable, Sendable, CustomStringConvertible {
     /// Always `"WajubError"`.
     public var name: String { "WajubError" }
@@ -20,19 +20,19 @@ public struct WajubError: Error, Equatable, Sendable, CustomStringConvertible {
     /// A code of the catalogue (`WajubError.Code`), or an API code passed through.
     public var code: String
     public var message: String
-    /// On a `402`: the API's `error_code`.
+    /// On a decline, the bank's or the operator's code.
     public var declineCode: String?
     public var retryable: Bool
     /// The field at fault, e.g. `data.phone`.
     public var param: String?
     public var httpStatus: Int?
-    /// The response's `X-Request-Id`.
+    /// The request id to quote to Wajub support.
     public var correlationId: String?
-    /// On a `429`.
+    /// On `rate_limited`, the seconds to wait before trying again.
     public var retryAfterSeconds: Int?
-    /// The API's `errors`, first message per key.
+    /// Field errors: the first message per field.
     public var details: [String: String]?
-    /// On a `403 shield_blocked`.
+    /// On `shield_blocked`, the reference to quote to Wajub support.
     public var blockReference: String?
     public var apiMessage: String?
 
@@ -55,7 +55,7 @@ public struct WajubError: Error, Equatable, Sendable, CustomStringConvertible {
 
     public var description: String { "WajubError(\(type.rawValue), \(code)): \(message)" }
 
-    /// The shape of errors.md §1, with its snake_case keys.
+    /// The error as JSON, with snake_case keys.
     public func toJSON() -> JSONValue {
         func optional(_ value: String?) -> JSONValue { value.map(JSONValue.string) ?? .null }
         func optional(_ value: Int?) -> JSONValue { value.map { .number(Double($0)) } ?? .null }
@@ -82,7 +82,7 @@ extension WajubError: LocalizedError {
 }
 
 extension WajubError {
-    /// The codes of the error catalogue (errors.md §3). Unknown API codes are passed through.
+    /// The error codes. A code not listed here can reach you too, a bank's own decline code for instance.
     public enum Code {
         public static let sessionNotFound = "session_not_found"
         public static let sessionTerminalExpired = "session_terminal_expired"

@@ -34,14 +34,14 @@ public enum CheckoutScreen: Equatable, Sendable {
 public struct ApprovalScreen: Equatable, Sendable {
     /// The number the push was sent to, when the sheet knows it.
     public var phone: String?
-    /// The API's (English) instruction; may hold a USSD fallback.
+    /// The operator's instruction (English), which may give a code to dial.
     public var instruction: String?
 }
 
 public struct StepScreen: Equatable, Sendable {
     public var kind: ConfirmStepKind
     public var id: String
-    /// `otp_masked_contact` or the step's instruction (English).
+    /// Where the code was sent, or the step's instruction (English).
     public var hint: String?
     public var attemptsRemaining: Int?
     /// The last refusal, shown inline.
@@ -64,7 +64,7 @@ public struct PendingScreen: Equatable, Sendable {
     public var continueURL: String?
     /// 3-D Secure runs in the browser (`3DS_REQUIRED` while it is open).
     public var threeDS: Bool
-    /// The 15-minute watch cap was reached: "you will be notified".
+    /// The sheet stopped waiting for the outcome: the payer is told they will be notified.
     public var capReached: Bool
 
     public init(continueURL: String? = nil, threeDS: Bool = false, capReached: Bool = false) {
@@ -74,7 +74,7 @@ public struct PendingScreen: Equatable, Sendable {
     }
 }
 
-/// The card form: contact fields (hosted page or client session) or the sandbox test card.
+/// The card form: the contact fields a provider asks for, or the sandbox test card.
 public struct CardForm: Equatable, Sendable {
     public static let sandboxFields = ["card.number", "card_holder", "expiry_month", "expiry_year", "cvv"]
 

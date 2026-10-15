@@ -104,8 +104,8 @@ extension CheckoutController {
         update()
     }
 
-    /// Pays by card with the method's flavour: collects the card (Stripe), opens a client session, or
-    /// sends the hosted page's fields or the sandbox test card.
+    /// Pays by card: through your card collector (Stripe), on the provider's page after the contact
+    /// fields it asks for, or with the sandbox test card.
     public func submitCard() {
         guard result == nil, !isWorking, case .card(let flavour)? = currentMethod?.kind, let form = cardForm else { return }
         let errors = form.validate(language)
@@ -232,7 +232,7 @@ extension CheckoutController {
 
     // MARK: Wallets (README §8)
 
-    /// One tap: pays a wallet such as Djamo and follows its page.
+    /// One tap: pays with a wallet and opens its page.
     public func payWallet() {
         guard result == nil, !isWorking, let method = currentMethod, method.kind == .wallet, let channel = method.channels.first else { return }
         var data: [String: JSONValue] = [:]

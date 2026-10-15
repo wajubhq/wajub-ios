@@ -1,6 +1,6 @@
 import Foundation
 
-/// A colour, read from the CSS forms Wajub.js accepts: `#rgb`, `#rrggbb`, `#rrggbbaa`,
+/// A colour, read from the CSS forms the appearance accepts: `#rgb`, `#rrggbb`, `#rrggbbaa`,
 /// `rgb(r, g, b)` and `rgba(r, g, b, a)`, case-insensitive. Anything else does not parse.
 public struct RGBAColor: Equatable, Hashable, Sendable, CustomStringConvertible {
     /// 0…1.

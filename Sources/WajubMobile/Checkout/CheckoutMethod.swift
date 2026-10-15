@@ -1,12 +1,12 @@
 import Foundation
 
-/// How the card channel is paid (README §7).
+/// How the card is paid.
 public enum CardFlavour: Equatable, Sendable {
-    /// A provider-hosted card session (Paystack, Flutterwave, Adyen): contact fields, then the provider's page.
+    /// The provider's own card session: contact fields, then the provider's page.
     case clientSession(fields: [String])
     /// Stripe: your `CardCollector` produces a `pm_…`.
     case stripe(publishableKey: String)
-    /// The provider's card page, after its `required_fields`.
+    /// The provider's card page, after the contact fields it asks for.
     case hostedRedirect(fields: [String])
     /// The sandbox test-card form.
     case sandboxForm
@@ -32,9 +32,9 @@ public struct CheckoutMethod: Equatable, Sendable, Identifiable {
     public var kind: Kind
     /// In the sheet's language.
     public var name: String
-    /// The logo to draw (a PNG where the API has one; never an SVG), or `nil`: draw the method's symbol.
+    /// The logo to draw (never an SVG), or `nil`: draw the method's symbol.
     public var logo: String?
-    /// The session channels behind it, in API order.
+    /// The payment's channels behind it, in order.
     public var channels: [SessionChannel]
     /// Set when the amount is out of the channel's limits: the method is shown disabled.
     public var limit: AmountLimit?

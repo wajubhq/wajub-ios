@@ -1,15 +1,15 @@
 import Foundation
 
-/// One entry of `GET /pay/sdk-config`, keyed by raw slug.
+/// How one payment method is collected.
 public struct SdkChannelConfig: Equatable, Sendable {
     public var available: Bool
-    /// A prediction: the provider that charges is `ClientSession.provider` when there is one.
+    /// The payment provider expected to charge; `ClientSession.provider` says which one did.
     public var provider: String?
-    /// `form`, `stripe_elements`, `hosted_redirect`, `adyen_custom_card`, `psp_inline`, …
+    /// How the payment details are collected (`form`, `stripe_elements`, `hosted_redirect`, …).
     public var sdk: String?
     public var publishableKey: String?
     public var requiredFields: [String]
-    /// Absent means `false`.
+    /// The card is paid on the provider's own payment page.
     public var clientSession: Bool
 
     public init(json: JSONValue) {
@@ -32,10 +32,10 @@ public struct SdkChannelConfig: Equatable, Sendable {
     }
 }
 
-/// `GET /pay/sdk-config`.
+/// How each payment method of the payment is collected.
 public struct SdkConfigResponse: Equatable, Sendable {
-    /// Keyed by the session's slugs: an aggregate (`cm.mobile`) and its members (`cm.mtn`). An older answer had
-    /// the members only, and more channels than offered: the session decides what is shown.
+    /// Keyed by channel slug, an aggregate (`cm.mobile`) and its operators (`cm.mtn`) included. The
+    /// payment's own channels decide what is offered.
     public var channels: [String: SdkChannelConfig]
 
     public init(json: JSONValue) {
@@ -51,7 +51,7 @@ public struct SdkConfigResponse: Equatable, Sendable {
     }
 }
 
-/// `GET /pay/status` `transaction`, and the data of a realtime `PaymentStatusUpdated` event.
+/// A payment's status, as `WajubSession.status()` reads it.
 public struct StatusUpdate: Equatable, Sendable {
     /// Wajub's payment id (= `SessionTransaction.id`), not the merchant's reference.
     public var reference: String?
@@ -60,7 +60,7 @@ public struct StatusUpdate: Equatable, Sendable {
     public var errorCode: String?
     public var payerMessage: String?
 
-    /// An answer without a `status` says nothing: the watch carries on.
+    /// `false` when the answer said nothing about the status.
     public var isInformative: Bool { !status.rawValue.isEmpty }
 
     public init(json: JSONValue) {
@@ -78,7 +78,7 @@ public struct StatusUpdate: Equatable, Sendable {
     }
 }
 
-/// `GET /pay/status`.
+/// What `WajubSession.status()` returns.
 public struct StatusResponse: Equatable, Sendable {
     public var transaction: StatusUpdate
 
@@ -87,7 +87,7 @@ public struct StatusResponse: Equatable, Sendable {
     }
 }
 
-/// The realtime event `PaymentStatusUpdated`; its data arrives as a JSON string or an object.
+/// A live update of the payment's status, as the sheet receives it.
 public struct PaymentStatusUpdatedEvent: Equatable, Sendable {
     public var update: StatusUpdate
     public var statusLabel: String?
@@ -104,9 +104,9 @@ public struct PaymentStatusUpdatedEvent: Equatable, Sendable {
     }
 }
 
-/// `client_session` of a `202 action: "client_session"` answer.
+/// The card provider's own payment page, opened for this payment.
 public struct ClientSession: Equatable, Sendable {
-    /// The processing id (`prc_…`): send it back as `client_session_id`.
+    /// Its id, for `WajubSession.completeClientSession(id:)`.
     public var id: String
     /// The provider that charges.
     public var provider: String?
@@ -136,7 +136,7 @@ public struct ClientSession: Equatable, Sendable {
     }
 }
 
-/// An `action` of a payment answer. Unknown values are kept as they are.
+/// What a payment asks for next. Unknown values are kept as they are.
 public struct ProcessAction: RawRepresentable, Hashable, Sendable {
     public let rawValue: String
     public init(rawValue: String) { self.rawValue = rawValue }
@@ -152,7 +152,7 @@ public struct ProcessAction: RawRepresentable, Hashable, Sendable {
     public static let clientSession = ProcessAction(rawValue: "client_session")
 }
 
-/// The 2xx body of `/pay/process`, `/pay/client-session` and `/pay/client-session/complete`.
+/// A payment answer: its transaction and what it asks for next.
 public struct ProcessResponse: Equatable, Sendable {
     /// Never used to decide anything.
     public var message: String?
@@ -198,11 +198,11 @@ public struct ProcessResponse: Equatable, Sendable {
     }
 }
 
-/// A payer confirmation step (`confirm_otp`, `confirm_pin`, …).
+/// A confirmation step: a code, a PIN, a phone number, a date of birth or an address.
 public enum ConfirmStepKind: String, CaseIterable, Sendable {
     case otp, pin, phone, birthday, address
 
-    /// The key of the step's id in the `202` and in the verify body: `otp_id`, `pin_id`, …
+    /// The name of the step's id in a payment answer (`otp_id`, `pin_id`, …).
     public var idKey: String { "\(rawValue)_id" }
 
     var action: ProcessAction { ProcessAction(rawValue: "confirm_\(rawValue)") }
@@ -217,7 +217,7 @@ public enum ConfirmStepKind: String, CaseIterable, Sendable {
     }
 }
 
-/// The answer of `POST /pay/{kind}/verify` (always HTTP 200 unless the body fails validation).
+/// The answer to a confirmation step: accepted, or refused with a code.
 public enum StepVerifyResponse: Equatable, Sendable {
     case success(transaction: SessionTransaction?)
     case failed(code: String, message: String?, attemptsRemaining: Int?)
@@ -233,9 +233,9 @@ public enum StepVerifyResponse: Equatable, Sendable {
     }
 }
 
-/// `POST /pay/cancel` 200.
+/// What `WajubSession.cancel()` returns.
 public struct CancelResponse: Equatable, Sendable {
-    /// The merchant callback with `status=cancelled`.
+    /// The merchant's page for a cancelled payment, when there is one.
     public var redirectURL: String?
 
     public init(json: JSONValue) {
@@ -243,9 +243,9 @@ public struct CancelResponse: Equatable, Sendable {
     }
 }
 
-/// `POST /pay/{kind}/resend` and `/pay/3ds/send`.
+/// What a request for a new code returns.
 public struct ResendResponse: Equatable, Sendable {
-    /// `/pay/3ds/send` only.
+    /// Sandbox 3-D Secure: where the code was sent.
     public var maskedEmail: String?
 
     public init(json: JSONValue) {
@@ -253,18 +253,18 @@ public struct ResendResponse: Equatable, Sendable {
     }
 }
 
-/// The API's error body: not the `WajubError` shape, which is built from it.
+/// Wajub's error answer, from which `WajubError` is built.
 public struct APIErrorBody: Equatable, Sendable {
     public var code: Int?
     public var status: String?
     public var message: String?
     public var errorCode: String?
-    /// `errors`: field → messages.
+    /// Field errors: field → messages.
     public var errors: [String: [String]]
     public var transaction: SessionTransaction?
     public var blockReference: String?
     public var retryAfter: Int?
-    /// The nested `error` of the 3-D Secure verify refusal and the step failures.
+    /// The detail of a refused confirmation step.
     public var nestedError: NestedError?
     public var attemptsRemaining: Int?
 
@@ -292,7 +292,7 @@ public struct APIErrorBody: Equatable, Sendable {
         attemptsRemaining = json["attempts_remaining"]?.int
     }
 
-    /// `error: {code, message, retryable}`.
+    /// A refused step's code, message, and whether it can be tried again.
     public struct NestedError: Equatable, Sendable {
         public var code: String?
         public var message: String?

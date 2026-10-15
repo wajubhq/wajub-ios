@@ -1,7 +1,6 @@
 import Foundation
 
-/// The shared Mobile Money tables (`Resources/mobile-money.json`, copied from the contract's
-/// `data/mobile-money.json` by `sync-spec.sh`; never edited, never duplicated in code).
+/// The Mobile Money rules: countries, dial codes, number lengths, operator prefixes and brand badges.
 public struct MobileMoneyData: Sendable {
     /// The `schema_version` this SDK reads.
     static let supportedSchemaVersion = 1
@@ -17,7 +16,7 @@ public struct MobileMoneyData: Sendable {
         /// `+237`.
         public var dialCode: String
         public var nationalNumberLength: Int?
-        /// `keep` (Côte d'Ivoire) or `drop`.
+        /// The number keeps its leading 0 after the dial code (Côte d'Ivoire).
         public var keepsTrunkZero: Bool
         public var placeholder: String
         public var placeholderFormatted: String
@@ -171,7 +170,7 @@ public struct MobileMoneyData: Sendable {
     }
 }
 
-/// An operator's fallback badge (`algorithms.brand_fallback`).
+/// An operator's badge, drawn when it has no usable logo.
 public struct OperatorBadge: Equatable, Sendable {
     public var text: String
     /// Text colour, CSS hex.

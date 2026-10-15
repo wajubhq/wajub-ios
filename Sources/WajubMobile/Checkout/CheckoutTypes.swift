@@ -1,6 +1,6 @@
 import Foundation
 
-/// The sheet's state: Wajub.js's 17 `CheckoutState` names, exactly.
+/// The sheet's state; its raw value is the state's name (`INITIATED`, `3DS_REQUIRED`…).
 public enum CheckoutState: String, Sendable, CaseIterable {
     case initiated = "INITIATED"
     case collectingDetails = "COLLECTING_DETAILS"
@@ -21,21 +21,21 @@ public enum CheckoutState: String, Sendable, CaseIterable {
     case cancelled = "CANCELLED"
 }
 
-/// Wajub.js's `PaymentSuccess`. Confirm the payment server-side (`GET /payments/{id}` or the
+/// A successful payment. Confirm it on your server (`GET /payments/{id}` or the
 /// `payment.succeeded` webhook) before you deliver.
 public struct PaymentSuccess: Equatable, Sendable {
-    /// `transaction.id`.
+    /// Wajub's payment id, what `GET /payments/{id}` takes.
     public var id: String
     /// The merchant's reference.
     public var reference: String?
-    /// `amount_total`, major units.
+    /// What the payer paid, fee included, in major units.
     public var amount: Double
     public var currency: String
     /// `mobile_money`, `card`, `wallet`, or `unknown` when the session was already paid at load.
     public var method: String
     /// Always `"success"`.
     public var status: String { "success" }
-    /// ISO 8601: `terminal_at`, else `updated_at`, else now.
+    /// When the payment succeeded, ISO 8601.
     public var timestamp: String
     public var receiptURL: String?
 
@@ -68,11 +68,11 @@ public enum CancelReason: String, Sendable {
     case hostGone = "host_gone"
 }
 
-/// What `present()` resolves with, exactly once (states.md §4).
+/// What `present()` resolves with, exactly once.
 public enum CheckoutResult: Equatable, Sendable {
     /// The sheet closed after `SUCCESS`.
     case complete(payment: PaymentSuccess, transaction: SessionTransaction?)
-    /// The sheet closed while an attempt was running (money may still move), or the watch reached its 15-minute cap.
+    /// The sheet closed while a payment was under way (money may still move), or it stopped waiting for the outcome.
     case processing(transaction: SessionTransaction?)
     /// The sheet closed on `FAILED`, `EXPIRED`, a load error, or a payment cancelled elsewhere.
     case failed(error: WajubError, transaction: SessionTransaction?)
@@ -111,7 +111,7 @@ public struct PaymentStartedEvent: Equatable, Sendable {
     public var channel: String
 }
 
-/// Wajub.js's redirect event: the SDK is about to open `url` in the system browser.
+/// A provider page the sheet is about to open in the browser.
 public struct RedirectEvent: Equatable, Sendable {
     public var url: String
     /// Always `"GET"`.
@@ -192,7 +192,7 @@ public struct PresentOptions {
     public var loader: LoaderStyle
     /// Milliseconds before an unready sheet reports `ready_timeout`; `0` disables it.
     public var readyTimeout: Int
-    /// An `https` universal link back into your app, sent as `return_url` to provider pages.
+    /// An `https` universal link that brings the payer back to your app from a provider's page.
     public var returnURL: String?
     public var mobileMoney: MobileMoneyOptions
     /// Deprecated: the payment's live updates need no setting, and this option will be removed.
@@ -207,7 +207,7 @@ public struct PresentOptions {
     /// Milliseconds before the success screen closes itself; `0` keeps it. Default 3000.
     public var autoCloseSuccess: Int
     public var callbacks: CheckoutCallbacks
-    /// Collects cards for Stripe (`stripe_elements`). Without one, a Stripe card channel is not offered.
+    /// Collects cards with Stripe's SDK. Without one, Stripe card payments are not offered.
     public var cardCollector: CardCollector?
 
     public init(sessionToken: String, locale: String? = nil, appearance: Appearance? = nil, loader: LoaderStyle = .skeleton,
@@ -242,7 +242,7 @@ public struct PresentOptions {
 
 /// What a card collector receives.
 public struct CardCollectionRequest: Equatable, Sendable {
-    /// The provider's publishable key, from sdk-config (Stripe: `pk_…`).
+    /// The Stripe publishable key to use (`pk_…`).
     public var publishableKey: String
     public var amount: Double
     public var currency: String

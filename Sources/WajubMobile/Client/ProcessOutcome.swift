@@ -1,6 +1,6 @@
 import Foundation
 
-/// What a `202` without anything for the payer to do is waiting for.
+/// What a payment under way is waiting for.
 public enum ProcessingKind: String, Sendable {
     /// A push was sent to the payer's phone.
     case approval
@@ -13,11 +13,11 @@ public enum ProcessingKind: String, Sendable {
 /// A step the payer must take before the payment can finish.
 public struct RequiredAction: Equatable, Sendable {
     public var action: ProcessAction
-    /// `confirm_url`, or `client_session.hosted_url`.
+    /// The page to open, when the step is a page.
     public var url: String?
-    /// `otp_id`, `pin_id`, `phone_id`, `birthday_id`, `address_id` or `three_ds_id`.
+    /// The step's id, for `WajubSession.verify(_:id:fields:)` or the 3-D Secure calls.
     public var stepId: String?
-    /// `otp_masked_contact`, a `*_instruction`, or `masked_email`.
+    /// Where the code was sent, or the step's instruction.
     public var hint: String?
     public var clientSession: ClientSession?
     public var transaction: SessionTransaction?
@@ -136,7 +136,7 @@ enum PaymentAnswer: Sendable {
     }
 }
 
-/// An Altcha solution, sent as `data.altcha` / `altcha`.
+/// A solved security check of the payment.
 public struct AltchaSolution: Equatable, Sendable {
     public var algorithm: String
     public var challenge: String
@@ -150,8 +150,7 @@ public struct AltchaSolution: Equatable, Sendable {
     }
 }
 
-/// Solves Altcha proof-of-work challenges: the integer `n` in `[0, maxnumber]` with
-/// `lowercase_hex(SHA-256(salt + decimal(n))) == challenge`.
+/// Solves the payment's security check (`SessionResponse.altcha`).
 public enum AltchaSolver {
     public static func solve(_ challenge: AltchaChallenge) -> AltchaSolution? {
         let algorithm = challenge.algorithm.uppercased().replacingOccurrences(of: "-", with: "")

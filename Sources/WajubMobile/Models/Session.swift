@@ -1,11 +1,11 @@
 import Foundation
 
-/// Thrown when a body cannot be read as the model it should be (only `transaction.amount` is required).
+/// Thrown when an answer cannot be read (only the payment's amount is required).
 public struct WireDecodingError: Error, Equatable, Sendable {
     public let field: String
 }
 
-/// A payment status (`TransactionStatus.php`). Unknown values are kept as they are.
+/// A payment status. Unknown values are kept as they are.
 public struct TransactionStatus: RawRepresentable, Hashable, Sendable, CustomStringConvertible {
     public let rawValue: String
     public init(rawValue: String) { self.rawValue = rawValue }
@@ -26,13 +26,13 @@ public struct TransactionStatus: RawRepresentable, Hashable, Sendable, CustomStr
     public var description: String { rawValue }
 }
 
-/// `transaction.processing_context`: present only while `processing` or `partial`.
+/// What a payment under way is waiting for: present only while it is `processing` or `partial`.
 public struct ProcessingContext: Equatable, Sendable {
     public var channelSlug: String?
     public var isMobileMoney: Bool
     public var isUSSD: Bool
     public var isBankTransfer: Bool
-    /// English; may hold a USSD fallback ("dial *126#").
+    /// The operator's instruction, in English; it may give a code to dial.
     public var payerInstruction: String?
     /// A provider page to reopen.
     public var actionURL: String?
@@ -79,11 +79,11 @@ public struct Customer: Equatable, Sendable {
     }
 }
 
-/// `transaction` of `GET /pay/session` and of the payment answers. Amounts are major units.
+/// A payment, as the sheet reads it. Amounts are in major units.
 public struct SessionTransaction: Equatable, Sendable {
-    /// Wajub's payment id (`trx_…`): the realtime channel suffix and `PaymentSuccess.id`.
+    /// Wajub's payment id (`trx_…`), what `GET /payments/{id}` takes.
     public var id: String
-    /// The merchant's reference (= `trxref`). Not the `reference` of `GET /pay/status`.
+    /// Your reference for the payment. Not `StatusUpdate.reference`, which is Wajub's payment id.
     public var reference: String?
     public var trxref: String?
     public var amount: Double
@@ -174,7 +174,7 @@ public struct SessionChannel: Equatable, Sendable {
     public var slug: String
     /// In the session's locale.
     public var name: String
-    /// Always French (the literal key `name.fr`).
+    /// The name in French.
     public var nameFr: String?
     /// `mobile_money`, `mobile`, `card`, `wallet`, …
     public var type: String
@@ -214,13 +214,13 @@ public struct SessionChannel: Equatable, Sendable {
     /// The logo iOS can draw: the PNG, else a logo that is not an SVG; `nil` otherwise.
     public var drawableLogo: String? { ChannelLogo.drawable(logo: logo, png: logoPNG) }
 
-    /// The name for the sheet's language: `name.fr` in French, `name` in English.
+    /// The name in the sheet's language.
     public func localizedName(_ language: WajubLanguage) -> String {
         language == .fr ? (nameFr ?? name) : name
     }
 }
 
-/// `branding.white_label`: a boolean, or the web's object form.
+/// The merchant's white-label setting.
 public struct WhiteLabel: Equatable, Sendable {
     public var enabled: Bool
     public var brandName: String?
@@ -307,15 +307,15 @@ public struct Branding: Equatable, Sendable {
     /// `true` hides "Secured by Wajub".
     public var isWhiteLabel: Bool { whiteLabel?.enabled ?? false }
 
-    /// The header logo: `logo_url`, else `logo_square_url`, else `icon_url`.
+    /// The logo the sheet's header shows.
     public var headerLogoURL: String? { logoURL ?? logoSquareURL ?? iconURL }
 }
 
-/// `echo`: where the realtime socket is.
+/// Where the sheet gets the payment's live updates; your app does not need it.
 public struct EchoConfig: Equatable, Sendable {
-    /// `nil` when broadcasting is not configured: poll only.
+    /// `nil` when live updates are not available.
     public var key: String?
-    /// Scheme included: `wss://ws.wajub.com`.
+    /// The host, scheme included.
     public var wsHost: String?
     public var wsPort: Int?
     public var channelPrefix: String
@@ -330,7 +330,7 @@ public struct EchoConfig: Equatable, Sendable {
     }
 }
 
-/// `altcha`: a proof-of-work challenge to solve before paying.
+/// The payment's security check, solved by `AltchaSolver`.
 public struct AltchaChallenge: Equatable, Sendable {
     public var algorithm: String
     public var challenge: String
@@ -358,7 +358,7 @@ public struct AltchaChallenge: Equatable, Sendable {
     }
 }
 
-/// A saved card or Mobile Money number (`saved_methods`).
+/// A saved card or Mobile Money number.
 public struct SavedMethod: Equatable, Sendable {
     public var id: String
     public var type: String
@@ -382,7 +382,7 @@ public struct SavedMethod: Equatable, Sendable {
     }
 }
 
-/// `GET /pay/session`.
+/// A payment as the sheet loads it: transaction, branding, channels and language.
 public struct SessionResponse: Equatable, Sendable {
     public var transaction: SessionTransaction
     public var altcha: AltchaChallenge?

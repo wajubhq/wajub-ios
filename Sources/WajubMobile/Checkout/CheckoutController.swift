@@ -2,7 +2,7 @@ import Foundation
 
 /// How a provider page is opened.
 public enum BrowserMode: Sendable {
-    /// Inside the app (`SFSafariViewController`): a hosted card page, 3-D Secure, a client session.
+    /// Inside the app (`SFSafariViewController`): a provider's card page or 3-D Secure.
     case inApp
     /// Handed to the system (`UIApplication.open`): a wallet's page, which opens the wallet's app.
     case external
@@ -15,8 +15,8 @@ public protocol BrowserOpening: AnyObject {
     func open(_ url: URL, mode: BrowserMode, onClose: @escaping @MainActor @Sendable () -> Void) async -> Bool
 }
 
-/// The checkout's state machine, without any UI: it loads the session, offers the methods, submits
-/// payments, follows actions, watches the status and settles `CheckoutResult` exactly once.
+/// The checkout's logic, without any UI: it loads the payment, offers the methods, pays, follows the
+/// steps the payment asks for, and settles `CheckoutResult` exactly once.
 ///
 /// WajubMobileUI draws `screen` and calls the methods below. A host drawing its own sheet can do the same.
 @MainActor
@@ -43,14 +43,14 @@ public final class CheckoutController {
     public internal(set) var warning: WajubError?
     /// A payment request or a verification is running (`PROCESSING` / `VERIFYING`).
     public internal(set) var isBusy = false
-    /// The cancel call of "Cancel payment" is running.
+    /// "Cancel payment" is running.
     public internal(set) var isCancelling = false
     /// The host's `CardCollector` is collecting a card.
     public internal(set) var isCollectingCard = false
     /// "Try again" waits until then (`rate_limited`).
     public internal(set) var retryAvailableAt: Date?
     public internal(set) var isBrowserOpen = false
-    /// The payer asked to leave (dismiss or "Cancel payment"); the result follows the cancel call.
+    /// The payer asked to leave (dismiss or "Cancel payment"); the result follows once the payment is cancelled.
     public internal(set) var isClosing = false
     public internal(set) var result: CheckoutResult?
 
@@ -137,7 +137,7 @@ public final class CheckoutController {
     public var isSandbox: Bool { session?.transaction.sandbox ?? false }
     public var transaction: SessionTransaction? { lastTransaction ?? session?.transaction }
 
-    /// The amount to pay (`amount_total`) in the currency's usual format.
+    /// The amount to pay, fee included, in the currency's usual format.
     public var formattedAmount: String {
         guard let transaction = session?.transaction else { return "" }
         return formatAmount(transaction.amountTotal)
@@ -196,7 +196,7 @@ public final class CheckoutController {
         load()
     }
 
-    /// Retry from a load error: cancels the running requests and starts again with a new timer.
+    /// Retry from a load error: loads the payment again.
     public func retryLoad() {
         guard result == nil, !isReady else { return }
         load()

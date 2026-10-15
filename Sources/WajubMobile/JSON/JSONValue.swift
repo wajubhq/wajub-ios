@@ -1,13 +1,8 @@
 import Foundation
 
-/// A JSON value, read leniently.
-///
-/// Every wire model of the SDK is built from a `JSONValue` rather than with
-/// `Codable`, so that the parsing rules of the contract hold everywhere: unknown
-/// keys are ignored, every key may be missing, a number may arrive as an
-/// integer, a decimal or a numeric string, a boolean as `true`/`false`, `0`/`1`
-/// or `"true"`/`"false"`, and keys containing a dot (`"name.fr"`) are literal
-/// keys.
+/// A JSON value, read leniently: unknown keys are ignored, every key may be missing, a number may
+/// arrive as an integer, a decimal or a numeric string, a boolean as `true`/`false`, `0`/`1` or
+/// `"true"`/`"false"`, and keys containing a dot (`"name.fr"`) are literal keys.
 public enum JSONValue: Equatable, Sendable {
     case null
     case bool(Bool)

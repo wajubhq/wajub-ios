@@ -1,9 +1,9 @@
 import Foundation
 
-/// The low-level client of `https://api.wajub.com/pay/*`, for hosts that draw their own UI.
+/// The lower-level client of one payment, for apps that draw their own UI.
 ///
-/// It sends the contract's headers, timeouts, retries and `Idempotency-Key`, and returns the
-/// API's shapes. `WajubCheckout.present(_:)` (WajubMobileUI) drives it for you.
+/// `WajubCheckout.present(_:from:)` and `CheckoutController` use it for you. `status()` reads the
+/// payment's status, for example at the next launch after the app was closed during a payment.
 public final class WajubSession: @unchecked Sendable {
     let token: String
     let baseURL: URL
@@ -37,29 +37,29 @@ public final class WajubSession: @unchecked Sendable {
 
     // MARK: Typed calls
 
-    /// `GET /pay/session`.
+    /// The payment: amount, currency, payment methods, branding and language.
     public func session() async throws -> SessionResponse {
         let answer = try await call(.session, phase: .loading)
         guard let body = answer.body, let session = try? SessionResponse(json: body) else { throw unreadable(answer) }
         return session
     }
 
-    /// `GET /pay/sdk-config`.
+    /// How each payment method of the payment is collected.
     public func sdkConfig() async throws -> SdkConfigResponse {
         let answer = try await call(.sdkConfig, phase: .loading)
         return SdkConfigResponse(json: answer.body ?? .null)
     }
 
-    /// `GET /pay/status`. Its `reference` is Wajub's payment id, not your reference.
+    /// The payment's status. Its `reference` is Wajub's payment id, not your reference.
     public func status() async throws -> StatusResponse {
         let answer = try await call(.status, phase: .payment)
         return StatusResponse(json: answer.body ?? .null)
     }
 
-    /// `POST /pay/process`, with `data._client` added. Retries resend the same body under the same key.
+    /// Pays with a channel and the fields it needs.
     ///
-    /// A request whose outcome is unknown after its retries (network error, timeout, 5xx) comes back
-    /// as `.processing(kind: .pending)`: watch the status, never show it as a failure.
+    /// An outcome that is not known yet comes back as `.processing(kind: .pending)`: read the status,
+    /// never show it as a failure.
     public func process(channel: String, data: [String: JSONValue] = [:],
                         idempotencyKey: String = UUID().uuidString.lowercased()) async -> ProcessOutcome {
         var data = data
@@ -73,7 +73,7 @@ public final class WajubSession: @unchecked Sendable {
         }
     }
 
-    /// `POST /pay/client-session`: opens a provider-hosted card session (live only).
+    /// Opens the card provider's own payment page (live only).
     public func startClientSession(fields: [String: String] = [:], returnURL: String? = nil, restart: Bool = false,
                                    altcha: AltchaSolution? = nil) async -> ProcessOutcome {
         let body = WajubSession.clientSessionBody(fields: fields, returnURL: returnURL, restart: restart, altcha: altcha)
@@ -85,7 +85,7 @@ public final class WajubSession: @unchecked Sendable {
         }
     }
 
-    /// `POST /pay/client-session/complete`, once the payer is back from the provider's page.
+    /// Asks for the outcome once the payer is back from the provider's page.
     public func completeClientSession(id: String) async -> ProcessOutcome {
         do {
             let answer = try await send(.clientSessionComplete, body: ["client_session_id": .string(id)])
@@ -95,38 +95,38 @@ public final class WajubSession: @unchecked Sendable {
         }
     }
 
-    /// `POST /pay/cancel`: the payment is cancelled for good.
+    /// Cancels the payment for good.
     public func cancel() async throws -> CancelResponse {
         let answer = try await call(.cancel, phase: .payment)
         return CancelResponse(json: answer.body ?? .null)
     }
 
-    /// `POST /pay/{kind}/verify` with the step's id and its fields (`code`, `pin`, `phone`, `birthday`, or the address fields).
+    /// Answers a confirmation step: its id and fields (`code`, `pin`, `phone`, `birthday`, or the address fields).
     public func verify(_ kind: ConfirmStepKind, id: String, fields: [String: String]) async throws -> StepVerifyResponse {
         let answer = try await call(.verify(kind), phase: .payment, body: WajubSession.verifyBody(kind, id: id, fields: fields))
         return StepVerifyResponse(json: answer.body ?? .null)
     }
 
-    /// `POST /pay/{kind}/resend` (a no-op for the providers of today).
+    /// Asks for a new code for a confirmation step.
     public func resend(_ kind: ConfirmStepKind, id: String) async throws {
         _ = try await call(.resend(kind), phase: .payment, body: [kind.idKey: .string(id)])
     }
 
-    /// `POST /pay/3ds/send` (sandbox): a new email code.
+    /// Sandbox 3-D Secure: sends a new code by email.
     public func send3DSCode(threeDSId: String) async throws -> ResendResponse {
         let answer = try await call(.threeDSSend, phase: .payment, body: ["three_ds_id": .string(threeDSId)])
         return ResendResponse(json: answer.body ?? .null)
     }
 
-    /// `POST /pay/3ds/verify` (sandbox). A wrong code throws `invalid_code` (also when the API answers a 5xx):
-    /// keep the code screen. Other codes (`3ds_failed`, `3ds_timeout`, …) end the attempt.
+    /// Sandbox 3-D Secure: checks the code. A wrong code throws `invalid_code`: keep the code screen.
+    /// Other codes (`3ds_failed`, `3ds_timeout`, …) end the attempt.
     public func verify3DSCode(threeDSId: String, code: String) async throws {
         let answer = try await send(.threeDSVerify, body: ["three_ds_id": .string(threeDSId), "code": .string(code)])
         if answer.isSuccess { return }
         throw WajubSession.threeDSError(answer, language)
     }
 
-    /// `POST /pay/broadcasting/auth`: the Pusher signature for a private channel.
+    /// Used by the sheet for the payment's live updates; your app does not need it.
     public func broadcastingAuth(socketId: String, channelName: String) async throws -> String {
         let answer = try await call(.broadcastingAuth, phase: .payment,
                                     body: ["socket_id": .string(socketId), "channel_name": .string(channelName)])

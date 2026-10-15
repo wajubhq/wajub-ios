@@ -87,7 +87,7 @@ extension CheckoutController {
     }
 
     /// "Try again" from a retryable failure: back to the method's form (to the method list after a
-    /// confirmation step), a new `Idempotency-Key` on the next Pay.
+    /// confirmation step); the next Pay is a new attempt.
     public func tryAgain() {
         guard result == nil, canTryAgain, case .failed(let error) = screen else { return }
         if let availableAt = retryAvailableAt, clock.now < availableAt { return }
@@ -117,7 +117,7 @@ extension CheckoutController {
 
     // MARK: Closing (README §14, states.md §4–5)
 
-    /// "Cancel payment": `POST /pay/cancel`, then the sheet closes as `cancelled`.
+    /// "Cancel payment": cancels the payment for good, then the sheet closes as `cancelled`.
     public func cancelPayment() {
         guard canCancelPayment else { return }
         isClosing = true
@@ -239,7 +239,7 @@ extension CheckoutController {
         dismiss()
     }
 
-    /// The presenting screen went away: settle at once, never call `/pay/cancel`.
+    /// The presenting screen went away: settles at once, and never cancels the payment.
     public func hostGone() {
         guard result == nil else { return }
         finish(settledResult() ?? .cancelled(reason: .hostGone, redirectURL: nil))

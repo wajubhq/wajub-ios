@@ -1,27 +1,26 @@
 import Foundation
 
-/// One operator the payer can pick (README §6.1).
+/// One operator the payer can pick.
 public struct OperatorChoice: Equatable, Sendable, Identifiable {
-    /// `mtn`, `orange`, `wave`: the aggregate member's `operator`, else the slug after the dot.
+    /// The operator: `mtn`, `orange`, `moov`…
     public var id: String
-    /// The data file's brand label, else the channel's (or member's) name.
+    /// The operator's name to show.
     public var label: String
-    /// An `https` logo iOS can draw (a PNG where the API has one, never an SVG); when it is missing or
-    /// fails to load, draw `badge`.
+    /// An `https` logo iOS can draw (never an SVG); when it is missing or fails to load, draw `badge`.
     public var logoURL: String?
     public var badge: OperatorBadge
     /// The channel the payment goes through: the aggregate's slug for an aggregate member.
     public var channelSlug: String
-    /// The raw operator channel (`cm.mtn`, `ci.wave`), for sdk-config.
+    /// The operator's own channel (`cm.mtn`).
     public var operatorSlug: String
     public var isAggregateMember: Bool
-    /// Takes any number (Wave, Djamo…): never a mismatch.
+    /// A wallet that takes a number from any network: never a mismatch.
     public var isOperatorIndependent: Bool
     /// The amount is out of this channel's limits.
     public var limit: AmountLimit?
 }
 
-/// How the operator is chosen (Wajub.js `fields.operator`).
+/// How the payer chooses the operator.
 public enum OperatorMode: String, Sendable {
     /// The list is always shown (default).
     case choose
@@ -29,7 +28,7 @@ public enum OperatorMode: String, Sendable {
     case detect
 }
 
-/// The Mobile Money form: country, number, operator, validation and request (README §6).
+/// The Mobile Money form: country, number, operator and validation.
 public struct MobileMoneyForm: Equatable, Sendable {
     public private(set) var countries: [String]
     public private(set) var country: String
@@ -266,7 +265,7 @@ public struct MobileMoneyForm: Equatable, Sendable {
     }
 }
 
-/// `PresentOptions.mobileMoney` (Wajub.js `fields.country` / `fields.operator`).
+/// `PresentOptions.mobileMoney`: the country to start on and how the operator is chosen.
 public struct MobileMoneyOptions: Equatable, Sendable {
     /// ISO-2 to start on.
     public var country: String?

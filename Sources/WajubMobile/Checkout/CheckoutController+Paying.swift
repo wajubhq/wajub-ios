@@ -353,7 +353,8 @@ extension CheckoutController {
         payerReturned()
     }
 
-    /// The app came back from the background (a wallet's app, the browser) or a deep link arrived: poll at once.
+    /// The app came back from the background (a wallet's app, the browser) or a deep link arrived: the
+    /// payment is checked at once.
     public func appWillEnterForeground() {
         guard result == nil else { return }
         if watcher == nil {

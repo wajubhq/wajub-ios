@@ -41,7 +41,7 @@ public struct WajubStrings: Sendable {
         language == .fr ? fr : en
     }
 
-    /// The catalogue's text for an error code (errors.md §3), placeholders left as they are.
+    /// The sheet's text for an error code, placeholders left as they are.
     public func errorMessage(_ code: String) -> String {
         (ErrorCatalogue.entries[code] ?? ErrorCatalogue.entries[WajubError.Code.requestFailed]!).message(language)
     }
