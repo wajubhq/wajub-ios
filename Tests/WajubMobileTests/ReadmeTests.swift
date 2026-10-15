@@ -13,7 +13,7 @@ final class ReadmeTests: XCTestCase {
         XCTAssertFalse(files.isEmpty)
 
         let blocks = Self.swiftBlocks(readme)
-        XCTAssertEqual(blocks.count, 5, "a new Swift sample needs its copy in ci/swift6-host/Sources/Swift6Host/Readme")
+        XCTAssertEqual(blocks.count, 7, "a new Swift sample needs its copy in ci/swift6-host/Sources/Swift6Host/Readme")
         for block in blocks {
             // The SwiftPM manifest excerpt is not app code.
             if block.contains(".package(url:") { continue }

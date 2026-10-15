@@ -2,56 +2,26 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Native iOS checkout for [Wajub](https://wajub.com). It presents Mobile Money, card and wallet
-payments in a SwiftUI sheet — **no WebView** for Wajub's own screens — and calls
-`https://api.wajub.com/pay/*` with a payment session `authorization_token` created by your
-[server SDK](https://docs.wajub.com/libraries/sdks).
-
-It implements the shared Wajub mobile contract, spec v2 (the same states, callbacks, results,
-appearance object and error codes as Wajub.js 1.8 and the Android, Flutter and React Native SDKs).
-
-## Architecture
-
-```
-Your backend (server SDK, sk_…)
-        │ authorization_token
-        ▼
-iOS app ── WajubCheckout.present(options) ──► SwiftUI sheet
-        │
-        ├─ GET /pay/session  ┐ in parallel
-        ├─ GET /pay/sdk-config ┘
-        ├─ POST /pay/process (Idempotency-Key, data._client)
-        │     └─ action → native step screen / Safari / client session
-        ├─ POST /pay/{otp,pin,phone,birthday,address}/verify
-        └─ watch: Pusher/Reverb private-payment.{id} + GET /pay/status
-        ▼
-CheckoutResult (complete | processing | failed | cancelled) — confirm server-side
-```
-
-| Product | What |
-|---|---|
-| `WajubMobile` | Foundation only: models, lenient JSON, the API client (timeouts, retries, `Idempotency-Key`), errors, the Mobile Money tables and rules, Altcha, status watching (polling + a Pusher-protocol socket) and `CheckoutController`, the UI-agnostic state machine behind the sheet |
-| `WajubMobileUI` | The SwiftUI sheet and its UIKit presenter: `WajubCheckout.present(_:from:)` |
+Take Mobile Money, card and wallet payments in your iOS app with a ready-made payment sheet from
+[Wajub](https://wajub.com).
 
 ## Requirements
 
 | | |
 |---|---|
-| iOS | 15.0+ |
-| Swift | 5.9+ (Xcode 15 or later) |
-| Dependencies | none (Stripe is optional and lives in your app, see [Cards through Stripe](#cards-through-stripe)) |
-
-`WajubMobileUI` presents from your app's windows (`UIApplication.shared`): use it in an app, not in an
-app extension.
+| iOS | 15.0 or later |
+| Swift | 5.9 or later (Xcode 15 or later) |
+| Dependencies | None. Stripe is optional and lives in your app, see [Cards](#cards) |
+| Target | An app, not an app extension |
 
 ## Installation
 
-Swift Package Manager — in Xcode, *File › Add Package Dependencies…* with
-`https://github.com/wajubhq/wajub-ios`, or in `Package.swift`:
+Swift Package Manager: in Xcode, *File › Add Package Dependencies…* with
+`https://github.com/wajubhq/wajub-ios`, or in your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/wajubhq/wajub-ios.git", from: "1.0.0"),
+    .package(url: "https://github.com/wajubhq/wajub-ios.git", from: "1.1.0"),
 ],
 targets: [
     .target(name: "App", dependencies: [
@@ -60,12 +30,19 @@ targets: [
 ]
 ```
 
-`WajubMobileUI` brings `WajubMobile` with it. Import `WajubMobile` alone to draw your own UI.
+| Product | What it holds |
+|---|---|
+| `WajubMobile` | The models, the errors, the Mobile Money helpers, and what you need to draw [your own payment screens](#your-own-ui). No UI |
+| `WajubMobileUI` | The SwiftUI sheet and `WajubCheckout.present(_:from:)`. It brings `WajubMobile` with it |
 
 ## Quick start
 
-Create the payment on your server (`POST /payments` with your secret key) and hand its
-`authorization_token` to the app. Then:
+Your server creates the payment, the app presents the sheet with its token, and your server
+confirms the outcome. The app never holds your secret key.
+
+1. Create the payment on your server with `POST /payments` and your secret key, and hand its
+   `authorization_token` to the app.
+2. Present the sheet:
 
 ```swift
 import UIKit
@@ -81,10 +58,10 @@ func pay(token: String, from viewController: UIViewController) async {
     do {
         switch try await WajubCheckout.present(options, from: viewController) {
         case .complete(let payment, _):
-            // Paid. Confirm on your server (GET /payments/{id} or the payment.succeeded webhook) before delivering.
+            // Paid. Confirm on your server before delivering.
             await confirmOnServer(paymentId: payment.id)
         case .processing:
-            // The payer left while a payment was running: your server learns the outcome from the webhook.
+            // Closed while a payment was running: money may still move, your server learns the outcome.
             break
         case .failed(let error, _):
             print(error.code, error.message)
@@ -98,110 +75,126 @@ func pay(token: String, from viewController: UIViewController) async {
 }
 ```
 
-`present` resolves exactly once, when the sheet is gone, with the same value `onComplete` receives:
-another `present` can follow at once. One called from `onComplete`, or right after the presenting
-screen went away, waits for the settled sheet to be gone; only a sheet still open makes it throw.
+3. Confirm on your server before you deliver anything, with `GET /payments/{id}` or the
+   `payment.succeeded` webhook. The result in the app is what the payer saw, not a proof of
+   payment: a Mobile Money approval can land after the payer closed the sheet.
+
+`present` resolves once, when the sheet is gone, with the same value `onComplete` receives.
+`from:` is optional: without it the sheet presents from the top-most view controller of the key
+window. It throws `sheet_already_presented` only while another sheet is still open; called from
+`onComplete`, it waits for the closing sheet to be gone.
 
 ## Options
 
-`PresentOptions` (the contract's `PresentOptions`, with Swift names):
+`PresentOptions` takes every option as a labelled argument of its initializer, with the default
+below, and as a `var` property.
 
-| Option | Default | |
+| Option | Default | What it does |
 |---|---|---|
-| `sessionToken` | — | The payment's `authorization_token` |
-| `locale` | the session's, else the device's | `"fr"` or `"en"`; anything else is English |
-| `appearance` | `nil` | See [Appearance](#appearance) |
-| `loader` | `.skeleton` | `.skeleton` (placeholder blocks, pulsing) or `.spinner` |
-| `readyTimeout` | `15000` | Milliseconds before an unready sheet reports `ready_timeout` (with Retry); `0` disables it |
-| `returnURL` | `nil` | An `https` universal link back into your app, sent as `return_url` to provider pages. Without it the payer comes back by hand |
-| `mobileMoney` | | `MobileMoneyOptions(country:countryLocked:operatorMode:)`: start on a country (ISO-2), hide the country selector, `.choose` (the operator list, default) or `.detect` (the detected operator as a badge in the number field) |
-| `realtime` | from the session | `RealtimeOptions(enabled:host:port:tls:)`: another Pusher-protocol host (self-hosted Reverb or Soketi) or `enabled: false` for polling only |
-| `cancelOnDismiss` | `true` | Closing the sheet before any attempt cancels the payment (`POST /pay/cancel`). `false` keeps it open so you can present it again. A payment that may still move is never cancelled: not while loading, and not unless its last known status is `pending` with no attempt undecided (from the Pay press until a definitive answer) — closing then resolves `processing`. After a definitive refusal the payment is `pending` again and can be cancelled |
-| `autoCloseSuccess` | `3000` | Milliseconds before the success screen closes itself; `0` keeps it |
-| `callbacks` | | See below |
-| `cardCollector` | `nil` | Needed for cards routed to Stripe |
+| `sessionToken` | Required | The payment's `authorization_token` |
+| `locale` | `nil` | `"fr"` or `"en"`. Without it, the payment's language, else the device's |
+| `appearance` | `nil` | The sheet's look, see [Appearance](#appearance) |
+| `loader` | `.skeleton` | `.skeleton`, pulsing placeholder blocks, or `.spinner` |
+| `readyTimeout` | `15000` | Milliseconds. Past it, a sheet still loading shows an error with **Retry** and reports `ready_timeout` to `onLoadError`. `0` disables it |
+| `returnURL` | `nil` | An `https` universal link that brings the payer back to your app from a provider's page. Without it the payer comes back to the app by hand |
+| `mobileMoney` | `MobileMoneyOptions()` | See [Mobile Money](#mobile-money) |
+| `cancelOnDismiss` | `true` | Closing the sheet before any attempt cancels the payment. `false` leaves it open so you can present it again |
+| `autoCloseSuccess` | `3000` | Milliseconds before the success screen closes itself. `0` keeps it |
+| `callbacks` | `CheckoutCallbacks()` | See [Callbacks](#callbacks) |
+| `cardCollector` | `nil` | Your Stripe card collector, see [Cards](#cards) |
 
-### Callbacks
+```swift
+let options = PresentOptions(
+    sessionToken: token,
+    locale: "fr",
+    loader: .spinner,
+    returnURL: "https://shop.example.com/app/return",
+    mobileMoney: MobileMoneyOptions(country: "CI", countryLocked: true, operatorMode: .detect),
+    cancelOnDismiss: false
+)
+```
 
-All optional, all called on the main thread, in this order: `onReady` → `onStateChange`… →
-(`onPaymentStarted`, `onRedirect`) → `onSuccess` / `onError` / `onCancel` → `onComplete` (exactly
-once). A callback that throws is caught and logged; the sheet carries on.
+## Callbacks
+
+Every callback is optional and runs on the main thread, in this order: `onReady`, then
+`onStateChange` as the sheet moves, `onPaymentStarted` and `onRedirect`, then `onSuccess`,
+`onError` or `onCancel`, and `onComplete` exactly once. A callback that throws does not stop the
+sheet.
 
 | Callback | Payload | When |
 |---|---|---|
-| `onReady` | `ReadyEvent` (`sessionId`, `environment`, `amount`, `currency`, `methods`) | The first screen is drawn (also for a payment that is already paid or ended) |
-| `onStateChange` | `StateChangeEvent` (`state`, `method`) | After `onReady`, then on every state change |
-| `onLoadError` | `WajubError` | The sheet cannot offer a payment: `session_not_found`, `session_terminal_expired`, `session_terminal_cancelled`, `session_terminal_failed`, `load_error`, `ready_timeout`, `no_payment_method` |
-| `onPaymentStarted` | `PaymentStartedEvent` (`method`, `channel`) | The first `2xx` of an attempt: from now on a dismiss resolves `processing` |
-| `onRedirect` | `RedirectEvent` (`url`) | Right before a provider page opens in Safari |
-| `onSuccess` | `PaymentSuccess` | Paid (`method: "unknown"` when it was already paid at load) |
-| `onError` | `WajubError` | A failure the payer sees (field validation excluded) |
-| `onCancel` | `CancelEvent` (`reason`, `redirectURL`) | The sheet closes as `cancelled` |
-| `onComplete` | `CheckoutResult` | The sheet closes |
+| `onReady` | `ReadyEvent`: `sessionId`, `environment` (`"sandbox"` or `"live"`), `amount`, `currency`, `methods` | The first screen is drawn, also for a payment already paid or ended |
+| `onStateChange` | `StateChangeEvent`: `state`, `method` (`mobile_money`, `card`, `wallet` or `unknown`) | After `onReady`, then on every state change |
+| `onLoadError` | `WajubError` | The sheet cannot offer a payment |
+| `onPaymentStarted` | `PaymentStartedEvent`: `method`, `channel` | The payment request is accepted. From now on, closing the sheet resolves `.processing` |
+| `onRedirect` | `RedirectEvent`: `url` | Right before a provider page opens |
+| `onSuccess` | `PaymentSuccess` | The payment succeeded, with `method` `"unknown"` when it was already paid when the sheet opened |
+| `onError` | `WajubError` | Every failure the payer sees. Field validation is not reported |
+| `onCancel` | `CancelEvent`: `reason`, `redirectURL` | The sheet closes as `.cancelled` |
+| `onComplete` | `CheckoutResult` | The sheet closes, with what `present` resolves with |
 
-### Results
+```swift
+options.callbacks = CheckoutCallbacks(
+    onReady: { event in print("ready:", event.environment, event.methods) },
+    onPaymentStarted: { event in print("paying with", event.channel) },
+    onError: { error in print(error.code, error.correlationId ?? "-") }
+)
+```
+
+### States
+
+`CheckoutState` is a `String` enum whose raw values are the state names.
+
+| State | What the payer sees |
+|---|---|
+| `INITIATED` | The list of payment methods |
+| `COLLECTING_DETAILS` | The form of the chosen method |
+| `PROCESSING` | The form, its **Pay** button busy |
+| `APPROVAL_REQUIRED` | "Approve the payment on your phone" |
+| `USSD_REQUIRED` | "Dial this code" |
+| `OTP_REQUIRED`, `PIN_REQUIRED`, `PHONE_REQUIRED`, `BIRTHDAY_REQUIRED`, `ADDRESS_REQUIRED` | A [confirmation step](#confirmation-steps) |
+| `3DS_REQUIRED` | 3-D Secure in Safari, or in sandbox a code sent by email |
+| `VERIFYING` | The step's screen while its answer is checked |
+| `PENDING` | "Payment in progress", with **Continue payment** when a payment page can be reopened |
+| `SUCCESS`, `FAILED`, `EXPIRED`, `CANCELLED` | The outcome, with **Try again** on a failure that allows it |
+
+## Results
 
 | `CheckoutResult` | When |
 |---|---|
-| `.complete(payment:transaction:)` | The sheet closed after the success screen |
-| `.processing(transaction:)` | The payer closed the sheet while an attempt was running, or the 15-minute watch ended: money may still move |
-| `.failed(error:transaction:)` | The sheet closed on a failure (with the error the payer saw; a payment still cancellable is also released with `POST /pay/cancel` when `cancelOnDismiss` is on, without `onCancel`; one that may still run, after `unsupported_action` or `redirect_unavailable`, is not), an expiry, a load error, or a payment cancelled elsewhere (`payment_cancelled`) |
-| `.cancelled(reason:redirectURL:)` | "Cancel payment" (`.payerCancelled`), a dismiss before any attempt (`.dismissed`), or the presenting screen going away first (`.hostGone`) |
+| `.complete(payment:transaction:)` | The sheet closed after the success screen, also for a payment already paid when it opened |
+| `.processing(transaction:)` | The sheet closed while a payment was under way: money may still move, confirm it on your server |
+| `.failed(error:transaction:)` | The sheet closed on a failure, an expiry, a load error, or a payment cancelled elsewhere (`payment_cancelled`) |
+| `.cancelled(reason:redirectURL:)` | **Cancel payment** (`.payerCancelled`), a close before any attempt (`.dismissed`), or the presenting screen going away first (`.hostGone`) |
 
-`PaymentSuccess` is Wajub.js's: `id` (Wajub's payment id), `reference` (yours), `amount` (what the
-payer paid, fee included), `currency`, `method`, `status` (`"success"`), `timestamp`, `receiptURL`.
+`PaymentSuccess` holds `id` (Wajub's payment id, what `GET /payments/{id}` takes), `reference`
+(yours), `amount` (what the payer paid, fee included), `currency`, `method`, `status` (always
+`"success"`), `timestamp` and `receiptURL`.
 
-## States
+When the screen you presented from goes away while the sheet is open, the sheet resolves
+`.cancelled` with `.hostGone` before any attempt, `.processing` once one started and `.complete`
+after a success, and it never cancels the payment. If the app's process dies, nothing can resolve:
+at the next launch, read the outcome on your server, or with `WajubSession(sessionToken:).status()`.
 
-`CheckoutController.state` and `onStateChange` use Wajub.js's 17 names:
+### Cancelling and closing
 
-| State | Screen |
-|---|---|
-| `INITIATED` | Method list |
-| `COLLECTING_DETAILS` | A method's form (Mobile Money, card fields, wallet) |
-| `PROCESSING` | The form, Pay busy |
-| `APPROVAL_REQUIRED` | "Approve the payment on your phone", with the operator's instruction |
-| `USSD_REQUIRED` | "Dial this code" |
-| `OTP_REQUIRED`, `PIN_REQUIRED`, `PHONE_REQUIRED`, `BIRTHDAY_REQUIRED`, `ADDRESS_REQUIRED` | A card provider's confirmation step |
-| `3DS_REQUIRED` | The sandbox 3-D Secure email code, or 3-D Secure in Safari |
-| `VERIFYING` | A step being verified |
-| `PENDING` | "Payment in progress" (with "Continue payment" when a provider page can be reopened) |
-| `SUCCESS`, `FAILED`, `EXPIRED`, `CANCELLED` | Outcomes ("Try again" on a retryable failure) |
+The payer closes the sheet with its close button or a swipe down.
 
-## Payment methods
+| The payer | Result | The payment |
+|---|---|---|
+| Taps **Cancel payment** | `.cancelled`, `.payerCancelled` | Cancelled |
+| Closes the sheet before paying, or back on the form after a refusal | `.cancelled`, `.dismissed` | Cancelled, unless `cancelOnDismiss` is `false` |
+| Closes it on the failure screen | `.failed`, with the error the payer saw | Cancelled when it still can be, unless `cancelOnDismiss` is `false` |
+| Closes it while a payment is under way: approving on the phone, dialling a code, confirming a step or waiting | `.processing` | Keeps running: confirm on your server |
+| Closes it after the success screen | `.complete` | Paid |
 
-| Channel | In the sheet |
-|---|---|
-| Mobile Money (operators and aggregates such as `cm.mobile`) | Country, number with its dial code (formatted as you type), operator picker with logos (or brand badges), detection of the operator from the number, mismatch check, E.164; then the approval screen |
-| Card, client session (Paystack, Flutterwave, Adyen) | Contact fields the provider needs, then its page in Safari |
-| Card, hosted page (CinetPay, Kkiapay, Mollie…) | The provider's `required_fields`, then its page in Safari |
-| Card, Stripe | Your `CardCollector` (see below); hidden without one |
-| Card, sandbox | The test-card form (sandbox only; card numbers never leave the device in live) |
-| One-tap wallets (Djamo) | One tap; the wallet's page opens its app |
-
-Provider pages open in `SFSafariViewController` (card pages, 3-D Secure, client sessions) or are
-handed to iOS (`UIApplication.open`, wallet pages that open the wallet's app). When the payer comes
-back — Safari closed, or the app back from the background — the sheet checks the payment at once.
-
-A payment request that gets no answer it can decide on (no connection, a timeout, a server error) is
-never shown as a failure: the
-sheet shows "Payment in progress" and watches the payment. If 60 s after the last try the payment
-still has not started (a refusal left by an earlier try does not count), the request most likely
-never reached Wajub: the sheet goes back to the form with a connection error, and the next Pay sends
-the same `Idempotency-Key`, so a request that did arrive is answered again instead of charged twice.
-A refusal newer than the attempt means the request arrived and was refused: the failure shows at once.
-
-When the payment asks for an Altcha proof of work, each submission gets a fresh one (the session is
-reloaded for a new challenge after each use); without one, nothing is sent and the sheet asks the
-payer to try again.
-
-Operator logos load from `https` URLs; one that is missing or does not load (iOS does not draw SVG
-logos) is drawn as the operator's brand badge.
+The sheet never shows a failure when it cannot be sure of the outcome: it shows "Payment in
+progress" and keeps waiting. Closed then, it resolves `.processing`.
 
 ## Appearance
 
-`PresentOptions.appearance` takes Wajub.js 1.8's appearance object, so your web Components and the
-native sheet share one style:
+`PresentOptions.appearance` sets the sheet's look, with the keys, presets and variables of
+[Appearance](https://docs.wajub.com/libraries/components/appearance):
 
 ```swift
 options.appearance = Appearance(
@@ -211,54 +204,46 @@ options.appearance = Appearance(
     buttonTextColor: "#FFFFFF")
 ```
 
-- The same keys as Wajub.js: `theme`, `colorScheme`, `inherit`, `variables` (`colorPrimary`,
-  `colorBackground`, `colorText`, `colorTextSecondary`, `colorTextPlaceholder`, `colorDanger`,
-  `colorSuccess`, `fontFamily`, `fontSizeBase`, `fontWeightNormal`, `fontWeightMedium`,
-  `fontWeightBold`, `spacingUnit`, `borderRadius`, `spacingGridRow`, `spacingGridColumn`) and the
-  top-level keys (`primaryColor`, `backgroundColor`, `buttonTextColor`, `inputBackgroundColor`,
-  `inputBorderColor`, `textMutedColor`, `secondaryColor`, `successColor`, `errorColor`, `shadow`,
-  `labels`, `disableAnimations`). Colours are `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb()` or `rgba()`;
-  lengths `"8px"`, `"8"` or `"0.5rem"`. Values that do not parse are ignored. Wajub.js's `"none"`
-  is `.noPreset` for `theme` and `.noShadow` for `shadow`, so neither reads as `Optional.none`.
-- Sharing the web object as JSON: `Appearance(json: try JSONValue.parse(jsonString))`.
-- Precedence, per token: `variables` > top-level keys > the preset > your app's theme (`inherit: true`:
-  the presenting screen's tint, background and text colours, kept only when they contrast enough) >
-  the merchant's branding from the Wajub dashboard > Wajub's default palette.
-- Colour scheme: `colorScheme`/`theme` > preset > inherited > the merchant's `appearance_mode` > auto.
-- Merchant branding fills what you did not set: colours, radius, font (used only if your app ships
-  it), logo and business name in the header; `white_label` hides "Secured by Wajub". A merchant
-  primary colour with poor contrast falls back to the default.
-- `disableAnimations: true`, or Reduce Motion, stops the skeleton's pulse and the cross-fades.
+- The `"none"` preset is `.noPreset` for `theme`, and no shadow is `.noShadow` for `shadow`.
+- `Appearance(json:)` reads the same object as JSON, to share one style with your web checkout.
+- `inherit: true` takes the presenting screen's tint, colours and light or dark style.
+- What you set wins. The merchant's branding from the Dashboard fills what you leave unset: logo,
+  business name, colours, radius and font. A white-label merchant hides "Secured by Wajub".
+- A `fontFamily` is used only if your app ships the font.
+- `disableAnimations: true`, or Reduce Motion on the phone, stops the animations.
 
-## Errors
+## Mobile Money
 
-Every failure is a `WajubError` (`Error`, `LocalizedError`) with Wajub.js's fields plus the mobile ones:
+The payer picks the country and the operator and types the number, formatted as they type it. The
+number's prefix preselects its operator, and a number that belongs to another operator is flagged
+before anything is sent. The sheet then asks the payer to approve the payment on their phone.
 
-| Field | |
+| `MobileMoneyOptions` | Default | What it does |
+|---|---|---|
+| `country` | `nil` | The country to start on, ISO-2. Without it, the payer's country when it is offered |
+| `countryLocked` | `false` | Hides the country selector, when `country` is offered |
+| `operatorMode` | `.choose` | `.choose` lists the operators. `.detect` shows the operator found from the number, and the list only when the number does not tell or the payer opens it |
+
+For your own screens, `MobileMoneyData.shared` checks, formats and reads numbers:
+`isValid(_:country:)`, `nationalDigits(_:country:)`, `e164(_:country:)`, `formatAsYouType(_:)`,
+`detectOperator(_:country:)`, and `badge(operatorId:fallbackName:)` for an operator's badge.
+
+## Cards
+
+| The card is paid | What you do |
 |---|---|
-| `type` | `api_error`, `authentication_error`, `invalid_request_error`, `payment_error`, `rate_limit_error` |
-| `code` | A code of the catalogue (`WajubError.Code`), or the API's own code passed through |
-| `message` | For the payer, in the sheet's language (French or English) |
-| `declineCode` | On a decline (`402`): the provider's code |
-| `retryable` | Whether "Try again" can work |
-| `param` | The field at fault |
-| `httpStatus`, `correlationId` | The HTTP status and the response's `X-Request-Id`, for support |
-| `retryAfterSeconds` | On `rate_limited` |
-| `details` | The API's field errors |
-| `blockReference` | On `shield_blocked` |
-| `apiMessage` | The API's own (English) message, for your logs |
+| With Stripe | Pass a `CardCollector` (below). Without one, Stripe card payments are not offered |
+| On the payment provider's secure page | Nothing. The sheet asks for the contact details the provider needs, then opens its page in Safari |
+| In sandbox | Nothing. The sheet shows a test card form |
 
-`toJSON()` gives the contract's snake_case shape. Notable codes: `insufficient_funds`,
-`payment_declined`, `payment_attempt_ended` (nothing was charged, try again), `payment_failed`,
-`shield_blocked`, `merchant_restricted`, `rate_limited`, `session_terminal_expired`,
-`unsupported_action`, `redirect_unavailable`, `security_check_failed`.
+A one-tap wallet opens the wallet's own app. While a page is open, **Continue payment** reopens it.
+In live, the card number is typed only into Stripe's form or the provider's page.
 
-## Cards through Stripe
+### Stripe through your own collector
 
-When the card channel is routed to Stripe, a Stripe `pm_…` must be created by Stripe's own SDK.
-WajubMobile does not depend on `stripe-ios`: implement `CardCollector` in your app, and the sheet
-offers "Pay by card" and sends the `pm_…` it returns. Without a collector a Stripe-routed card
-channel is not offered (Mobile Money and the other methods still are).
+The package does not depend on Stripe's SDK. Implement `CardCollector` in your app with
+`stripe-ios`: the sheet calls it when the payer taps **Pay by card**, and sends the `pm_…` id it
+returns.
 
 ```swift
 import StripePaymentsUI
@@ -280,30 +265,74 @@ final class StripeCardCollector: CardCollector {
 options.cardCollector = StripeCardCollector()
 ```
 
-Return `nil` when the payer backs out. A `WajubError` you throw is shown on the card form as it is;
-any other error is shown there as `validation_error`, with the error's own description when it has
-one (Stripe's errors do), else "Check the information entered."; its text is kept in `apiMessage`.
+`CardCollectionRequest` carries `publishableKey`, the Stripe key to use, `amount`, `currency`,
+`customerEmail`, `customerName` and `language`, the sheet's. Return `nil` when the payer backs out:
+the sheet stays on the card form and nothing is charged. An error you throw is shown on the card
+form: a `WajubError` as it is, any other with its own description when it has one.
+
+## Confirmation steps
+
+Some card payments ask the payer for one more thing after **Pay**, sometimes several in a row.
+Each step has its own screen.
+
+| State | The payer enters |
+|---|---|
+| `OTP_REQUIRED` | The code they received |
+| `PIN_REQUIRED` | The card PIN |
+| `PHONE_REQUIRED` | A phone number |
+| `BIRTHDAY_REQUIRED` | A date of birth |
+| `ADDRESS_REQUIRED` | A billing address |
+| `3DS_REQUIRED` | 3-D Secure in Safari, or in sandbox the code sent by email |
+
+A wrong answer keeps the screen and shows the attempts left. A step that expires or runs out of
+attempts ends on the failure screen, and **Try again** goes back to choosing a method.
+
+## Errors
+
+Every failure is a `WajubError`, a struct conforming to `Error` and `LocalizedError`, whose
+`errorDescription` is `message`.
+
+| Field | What it is for |
+|---|---|
+| `type` | `.apiError`, `.authenticationError`, `.invalidRequestError`, `.paymentError` or `.rateLimitError` |
+| `code` | What to branch on. The codes are constants in `WajubError.Code` |
+| `message` | For the payer, in the sheet's language. Show it as is |
+| `declineCode` | On a decline, the bank's or the operator's code |
+| `retryable` | Whether **Try again** can work |
+| `param` | The field at fault |
+| `correlationId` | The request id to quote to Wajub support |
+| `retryAfterSeconds` | On `rate_limited`, the seconds to wait before trying again |
+| `blockReference` | On `shield_blocked`, the reference to quote to Wajub support |
+
+| Group | Codes |
+|---|---|
+| Load (`onLoadError`, then `.failed`) | `session_not_found`, `session_terminal_expired`, `session_terminal_cancelled`, `session_terminal_failed`, `load_error` and `ready_timeout` (retryable), `no_payment_method` |
+| Connection | `network_error`, `timeout`, `server_error`, `rate_limited`, `request_failed` |
+| Payment | `payment_declined`, `insufficient_funds` and other decline codes (retryable), `payment_attempt_ended` (retryable, nothing was charged), `payment_failed`, `payment_cancelled`, `session_expired`, `limit_exceeded`, `shield_blocked`, `merchant_not_verified`, `merchant_restricted`, `payment_method_restricted`, `country_restricted`, `currency_restricted`, `channel_not_accepted`, `security_check_failed` (retryable), `unsupported_action`, `redirect_unavailable` |
+| Confirmation steps | `invalid_otp`, `invalid_pin`, `invalid_phone`, `invalid_birthday`, `invalid_address`, `invalid_code` (the screen stays), `otp_expired`, `pin_expired`, `phone_expired`, `birthday_expired`, `address_expired`, `max_attempts_exceeded`, `3ds_failed`, `3ds_rejected`, `3ds_cancelled`, `3ds_timeout` |
+| Your code | `sheet_already_presented` |
+
+A code not listed here, a bank's own decline code for instance, can reach you too: show `message`.
+On `rate_limited`, the sheet counts down before **Try again**: do not wrap it in a retry loop of
+your own.
 
 ## Your own UI
 
-`WajubMobile` alone runs the whole checkout without drawing anything.
+Import `WajubMobile` alone to draw your own payment screens: `CheckoutController` keeps the
+sheet's logic, and you draw only its screens.
 
-`Checkout.present(_:presenter:browser:)` is `WajubCheckout.present` with your UI. It creates the
-`CheckoutController` (the sheet's state machine) from your options, hands it to your
-`CheckoutPresenting.present(_:)`, starts it, and once the checkout settles calls your
-`dismiss(_:completion:)` and resolves with the `CheckoutResult` (one sheet at a time, like
-`WajubCheckout.present`):
+`Checkout.present(_:presenter:browser:)` runs the whole checkout under your own UI, with the same
+rules as `WajubCheckout.present`: one sheet at a time, and the `CheckoutResult` once your sheet is
+gone.
 
-- Your presenter draws the controller's `screen` (and `state`, `methods`, `mobileMoney`, `cardForm`,
-  `fieldErrors`, `banner`…), redraws on `onChange`, and wires your buttons to its actions
-  (`selectMethod`, `setPhone`, `pickOperator`, `submitMobileMoney`, `submitCard`, `payWallet`,
-  `submitStep`, `submitThreeDSCode`, `tryAgain`, `cancelPayment`, `dismiss`,
-  `appWillEnterForeground`, `hostGone`…), then calls `dismiss`'s `completion` once your sheet is
-  gone.
-- Your `BrowserOpening` opens provider pages: `.inApp` in an `SFSafariViewController` (call
-  `onClose` once it is closed), `.external` with `UIApplication.open`.
-- Both callbacks are `@MainActor @Sendable`, so they can go into system completion handlers in a
-  Swift 6 app.
+- Your `CheckoutPresenting` draws the controller's `screen`, redraws on `onChange`, and wires your
+  buttons to the controller's actions, `selectMethod`, `setPhone`, `submitMobileMoney`,
+  `submitCard`, `submitStep`, `tryAgain`, `cancelPayment` and the others. Call `dismiss`'s
+  `completion` once your sheet is gone, and `controller.hostGone()` if your sheet cannot be shown.
+- Your `BrowserOpening` opens provider pages: `.inApp` in an `SFSafariViewController`, calling
+  `onClose` once it is closed, and `.external` with `UIApplication.open`. It returns `false` when
+  nothing can open the page.
+- `completion` and `onClose` are `@MainActor @Sendable`.
 
 ```swift
 import Foundation
@@ -346,88 +375,40 @@ func payWithMySheet(_ options: PresentOptions) async throws -> CheckoutResult {
 }
 ```
 
-Without `Checkout`, you can also create `CheckoutController(options:browser:)` yourself, set its
-`onChange` and `onFinish` (the `CheckoutResult`, once, when your sheet must close) and call
-`start()`.
-
-- `WajubSession` is the low-level client: `session()`, `sdkConfig()`, `status()`,
-  `process(channel:data:idempotencyKey:)`, `startClientSession(…)`, `completeClientSession(id:)`,
-  `cancel()`, `verify(_:id:fields:)`, `resend(_:id:)`, `send3DSCode(threeDSId:)`,
-  `verify3DSCode(threeDSId:code:)`, `broadcastingAuth(socketId:channelName:)`. It sends the
-  contract's headers, device signals, timeouts, retries and `Idempotency-Key`, and returns the API's
-  shapes and `ProcessOutcome`.
-- `MobileMoneyData.shared` exposes the Mobile Money rules (national digits, validation, operator
-  detection, E.164, formatting).
+`WajubSession(sessionToken:)` is the lower-level client of one payment. Its `status()` reads the
+payment's status, for example at the next launch after the app was closed during a payment.
 
 ## Privacy
 
-`WajubMobile` ships a privacy manifest (`PrivacyInfo.xcprivacy`), which Xcode includes in your app's
-privacy report (*Product › Archive*, then *Generate Privacy Report* in the Organizer).
+When the payer pays, the SDK sends Wajub what the payment needs and, for fraud prevention, basic
+information about the device and a random install identifier, which is not the advertising
+identifier. When the payer uses Stripe's card form, Stripe's SDK also collects what Stripe documents
+for its own fraud checks.
 
-- No tracking: no tracking domains, no advertising identifier, no App Tracking Transparency prompt.
-- Required-reason APIs: only the system boot time (`ProcessInfo.systemUptime`, reason `35F9.1`), to
-  measure elapsed time for the SDK's timers; it never leaves the device. No `UserDefaults`, file
-  timestamps, disk space or keyboard APIs. The install id is a file in Application Support.
-
-What the SDK sends to Wajub, the payment processor, when someone pays — declare it in App Store
-Connect (*App Privacy*) as data your app collects, **linked to the user's identity**, **not used for
-tracking**, for **App Functionality** (processing the payment and preventing fraud), together with
-what your app collects on its own:
+`WajubMobile` ships a privacy manifest, which Xcode includes in your app's privacy report. It
+declares no tracking. Under **App Privacy** in App Store Connect, declare what the SDK sends next to
+what your app collects on its own: linked to the user, not used for tracking, for App
+Functionality, which covers processing the payment and preventing fraud.
 
 | App Store Connect | What the SDK sends |
 |---|---|
-| Contact Info › Name | First and last name or card holder, when the payment method asks for them |
-| Contact Info › Email Address | When the card provider asks for it |
-| Contact Info › Phone Number | The Mobile Money number, or a phone a card provider asks for |
-| Contact Info › Physical Address | Address, city, ZIP code and country, when the card provider asks for them |
-| Financial Info › Payment Info | The Mobile Money account, the Stripe `pm_…` your collector returns, a card PIN a provider asks for, and test cards in sandbox (card numbers never leave the device in live) |
-| Identifiers › Device ID | A SHA-256 of a random id made for the install (neither the advertising identifier nor `identifierForVendor`), for fraud prevention |
-| Other Data | A date of birth when a provider asks for it; the device's time zone, language and screen size, for fraud prevention |
+| Contact Info, Name | First and last name, or the card holder, when the payment method asks for them |
+| Contact Info, Email Address | When the card payment asks for it |
+| Contact Info, Phone Number | The Mobile Money number, or a phone number a card payment asks for |
+| Contact Info, Physical Address | Address, city, ZIP code and country, when the card payment asks for them |
+| Financial Info, Payment Info | The Mobile Money account, the Stripe card token, a card PIN when one is asked, and test cards in sandbox |
+| Identifiers, Device ID | The random install identifier, for fraud prevention |
+| Other Data | A date of birth when one is asked, and basic device information, for fraud prevention |
 
-Card numbers typed in a provider's page in Safari go to that provider, not through the SDK.
+## Testing
 
-## Development
-
-```bash
-swift test
-```
-
-The repository is a Swift package. The core and its tests (the contract tests of
-`conformance.md`, named `test_PR_01_…` with the requirement id in a `/// PR-01 …` line above each,
-running against the contract's real API fixtures) build on macOS and on Linux. The sheet
-(`WajubMobileUI`) needs the iOS SDK: its sources are wrapped in `#if os(iOS)` and compile to an empty
-module elsewhere.
-
-- On a Mac with Xcode: `swift test`, then
-  `xcodebuild -scheme WajubMobile-Package -destination 'generic/platform=iOS Simulator' build` to
-  compile the sheet.
-- On Linux, in the Swift container:
-  `podman run --rm -v "$PWD":/src:Z -w /src docker.io/library/swift:6.1 swift test`
-  (`docker run` works the same). Only the core is compiled and tested there: SwiftUI and UIKit do
-  not exist on Linux, so the sheet is compiled by the macOS job of CI.
-- `.github/workflows/ci.yml` runs both: a macOS job (`swift test`, and the iOS Simulator builds of the
-  sheet and of `ci/swift6-host`) and a Linux job (`swift test` in `swift:6.1`, the core in Swift 6
-  language mode, and `ci/swift6-host`, a small Swift 6 package that implements the SDK's protocols
-  the way an app does and holds this README's samples).
-- Timeouts (connect 10 s, then 30 s or 60 s for the whole call) are measured on the SDK's own clock,
-  so the tests check them on a virtual clock. `URLSession` reports no connection event: a request
-  with a body counts as connected once its body starts flowing; a request without one (the reads,
-  `/pay/cancel`) cannot be told apart from a slow answer, so only its whole-call timeout applies.
-- `Tests/WajubMobileTests/Fixtures` and `Sources/WajubMobile/Resources/mobile-money.json` are copies
-  of the shared contract, written by `sync-spec.sh ios` in the mobile SDKs' monorepo; never edit
-  them by hand (`test_SY_01_usesTheSyncedSpecFiles` checks their checksums). Test fixtures are a
-  test-target resource and are not shipped; the Mobile Money data file is a resource of
-  `WajubMobile` and is.
-- The Swift samples of this README are compiled by CI, in Swift 6 mode, from
-  `ci/swift6-host/Sources/Swift6Host/Readme/`, and `ReadmeTests` fails when a README sample is not
-  found there as written: change both together. Stripe's types are stand-ins there, as the package
-  does not depend on `stripe-ios`.
-- `PrivacyInfo.xcprivacy` is checked by `PrivacyManifestTests`: a required-reason API used in the
-  sources must be declared there.
+A payment your server creates with a sandbox key puts the whole flow in sandbox, sheet included,
+and the sheet shows a "Test mode" badge. Nothing changes in the app. The test numbers and cards are
+on [Test scenarios](https://docs.wajub.com/developer-tools/testing/test-scenarios).
 
 ## Documentation & support
 
-- Mobile SDK docs: [docs.wajub.com/libraries/sdks/mobile](https://docs.wajub.com/libraries/sdks/mobile)
+- iOS SDK docs: [docs.wajub.com/libraries/sdks/ios](https://docs.wajub.com/libraries/sdks/ios)
 - Server SDKs (create payments): [docs.wajub.com/libraries/sdks](https://docs.wajub.com/libraries/sdks)
 
 ## License
