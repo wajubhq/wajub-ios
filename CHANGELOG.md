@@ -11,8 +11,9 @@
   `CheckoutResult` (`complete`, `processing`, `failed` or `cancelled`) when the sheet is gone, so the
   next `present` can follow at once (one called from `onComplete` waits for the sheet to be gone).
   Presenting a second sheet while one is open throws `sheet_already_presented`; a sheet with no
-  screen to present from, or whose presenting screen goes away, resolves at once (`host_gone`), even
-  while "Cancel payment" runs.
+  screen to present from, or whose presenting screen goes away, resolves at once (`host_gone`). If
+  "Cancel payment" is running then, it resolves when the cancel answers, with what the payment
+  became (`cancelled`, or `complete` when it was paid meanwhile).
 - Mobile Money: country, number with its dial code formatted as you type, operator picker with
   logos or brand badges, the operators of an aggregate such as `cm.mobile`, detection of the
   operator from the number, a clear message when the number belongs to another operator, numbers
