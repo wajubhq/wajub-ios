@@ -60,6 +60,8 @@ public final class CheckoutController {
     public var onFinish: (@MainActor (CheckoutResult) -> Void)?
 
     var config: SdkConfigResponse?
+    /// The loaded session said sandbox; never lowered afterwards.
+    var loadedAsSandbox = false
     var isReady = false
     var emittedState: CheckoutState?
     /// The attempt under way. It stays `inFlight` (undecided) from the Pay press until a definitive answer:
@@ -144,7 +146,8 @@ public final class CheckoutController {
     // MARK: Derived
 
     public var strings: WajubStrings { WajubStrings(language) }
-    public var isSandbox: Bool { session?.transaction.sandbox ?? false }
+    /// A sandbox payment, as the payment said when it loaded: a later answer never changes it.
+    public var isSandbox: Bool { loadedAsSandbox }
     public var transaction: SessionTransaction? { lastTransaction ?? session?.transaction }
 
     /// The amount to pay, fee included, in the currency's usual format.
@@ -322,6 +325,7 @@ public final class CheckoutController {
     func sessionLoaded(_ session: SessionResponse, config: SdkConfigResponse?) {
         readyTimer?.cancel()
         self.session = session
+        if session.transaction.sandbox { loadedAsSandbox = true }
         self.config = config
         lastTransaction = session.transaction
         // A refusal the payment already carries (another device's try) is not news for the 60 s rule.

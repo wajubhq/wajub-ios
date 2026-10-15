@@ -14,8 +14,10 @@
   earlier plan is read in its current form (Benin's 8-digit numbers, Gabon's), and the operator is
   recognised from the number in more countries.
 - In a sandbox payment, Wajub's Mobile Money test numbers are accepted, paid through the operator
-  they test, and sent as typed. `MobileMoneyData.sandboxTestNumber(_:country:)` and the `sandbox:`
+  they test, and sent as read. `MobileMoneyData.sandboxTestNumber(_:country:)` and the `sandbox:`
   variants of `isValid`, `detectOperator` and `e164` do the same for your own screens.
+- `MobileMoneyData.nationalDigits(_:country:)` now keeps the 0 where it is part of the number, and
+  `Country.keepsTrunkZero` is deprecated: to send a number, use `e164(_:country:)`.
 - `PresentOptions.realtime` and `RealtimeOptions` are deprecated: the payment's live updates need no
   setting. Code that sets them still compiles and behaves as before; remove them, as they will go
   in a later major version.

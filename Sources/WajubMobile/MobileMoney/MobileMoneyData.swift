@@ -1,6 +1,7 @@
 import Foundation
 
-/// The Mobile Money rules: countries, dial codes, number lengths, operator prefixes and brand badges.
+/// Mobile Money numbers by country: checks, formats and reads them, recognises their operator, and
+/// gives each operator's badge.
 public struct MobileMoneyData: Sendable {
     /// The `schema_version` this SDK reads.
     static let supportedSchemaVersion = 2
@@ -31,7 +32,9 @@ public struct MobileMoneyData: Sendable {
         /// `+237`.
         public var dialCode: String
         public var nationalNumberLength: Int?
-        /// The leading 0 is part of the number (Côte d'Ivoire, Benin, Congo…).
+        /// The leading 0 is part of the number (Côte d'Ivoire, Benin, Congo…). `nationalDigits(_:country:)`
+        /// already keeps it there: to send a number, use `e164(_:country:)`.
+        @available(*, deprecated, message: "nationalDigits(_:country:) keeps the 0 where it is part of the number: use e164(_:country:) to send a number.")
         public var keepsTrunkZero: Bool {
             get { leadingZero == .significant }
             set { leadingZero = newValue ? .significant : .trunk }
@@ -108,7 +111,7 @@ public struct MobileMoneyData: Sendable {
         return try MobileMoneyData(data: try Data(contentsOf: url))
     }
 
-    /// Reads the data file; refuses a `schema_version` this SDK does not know.
+    /// Reads Mobile Money tables; throws when they are not in a form this version of the SDK reads.
     public init(data: Data) throws {
         guard let json = try? JSONValue.parse(data) else { throw LoadError.unreadable }
         let version = json["schema_version"]?.int
@@ -267,7 +270,8 @@ public struct MobileMoneyData: Sendable {
         return detectOperator(input, country: country)
     }
 
-    /// `e164(_:country:)`, where a sandbox test number is sent as it was typed.
+    /// `e164(_:country:)`, where a sandbox test number is sent as it is read (an 8-digit Beninese test
+    /// number in its ten-digit form, for instance).
     public func e164(_ input: String, country: String, sandbox: Bool) -> String {
         if sandbox, let test = sandboxTestNumber(input, country: country) { return test.e164 }
         return e164(input, country: country)

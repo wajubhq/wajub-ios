@@ -10,7 +10,8 @@ func compatibilityWith1_0(token: String) -> [PresentOptions] {
     return [options, off]
 }
 
-/// The Mobile Money helpers as 1.0.0 exposed them.
+/// The Mobile Money helpers as 1.0.0 exposed them (`keepsTrunkZero` is deprecated since).
+@available(*, deprecated)
 func mobileMoneyAsIn1_0(_ number: String) -> [String] {
     var data = MobileMoneyData.shared
     var country: MobileMoneyData.Country? = data.countries["CM"]

@@ -32,7 +32,7 @@ extension CheckoutController {
             if mobileMoney == nil, let session {
                 mobileMoney = MobileMoneyForm(channels: method.channels, config: config, language: language,
                                               amount: session.transaction.amountTotal, options: options.mobileMoney,
-                                              geoCountry: session.geoCountry, sandbox: session.transaction.sandbox)
+                                              geoCountry: session.geoCountry, sandbox: isSandbox)
             }
         case .card(let flavour):
             if cardForm?.flavour != flavour {
@@ -80,7 +80,7 @@ extension CheckoutController {
             update()
             return
         }
-        let validation = form.validate(sandbox: isSandbox)
+        let validation = form.validate()
         if let error = validation.error {
             // The payer is told to pick in the list: show it.
             if error.code == WajubError.Code.operatorMismatch || error.code == WajubError.Code.operatorRequired {

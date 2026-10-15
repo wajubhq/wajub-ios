@@ -84,9 +84,9 @@ final class MobileMoneyTests: XCTestCase {
         XCTAssertTrue(form.isOperatorListVisible)
         XCTAssertEqual(form.selection, "mtn")
         form.setPhone("691234567")
-        XCTAssertEqual(form.validate(sandbox: false).error?.code, WajubError.Code.operatorMismatch,
+        XCTAssertEqual(form.validate().error?.code, WajubError.Code.operatorMismatch,
                        "the list it names is on screen")
-        XCTAssertEqual(form.validate(sandbox: false).error?.message,
+        XCTAssertEqual(form.validate().error?.message,
                        "This number belongs to Orange Money. Pick Orange Money in the list, or enter a MTN MoMo number.")
     }
 
@@ -314,6 +314,38 @@ final class MobileMoneyTests: XCTestCase {
         liveController.selectMethod("mobile_money")
         liveController.setPhone("680000000")
         XCTAssertEqual(liveController.mobileMoney?.detectedOperator, "mtn")
+        liveController.hostGone()
+    }
+
+    /// MM-10 takes the sandbox test numbers
+    @MainActor func test_MM_10_readsSandboxFromTheLoadedPayment() async {
+        // A sandbox payment stays one when a later answer's transaction leaves the flag out.
+        let sandbox = Harness(session: "session-sandbox-cm", config: "sdk-config-sandbox")
+        let silent = Fixtures.body("process-processing-mobile-money-sandbox").setting(["transaction", "sandbox"], to: nil)
+        sandbox.transport.on("POST", "/pay/process", .json(202, silent))
+        sandbox.transport.answer("status-processing")
+        let controller = await sandbox.start()
+        XCTAssertTrue(controller.isSandbox)
+        controller.selectMethod("mobile_money")
+        controller.setPhone("680000000")
+        controller.submitMobileMoney()
+        await waitUntil("approval") { controller.state == .approvalRequired }
+        XCTAssertEqual(controller.transaction?.sandbox, false, "the answer said nothing")
+        XCTAssertTrue(controller.isSandbox, "never lowered by a later answer")
+        controller.hostGone()
+
+        // A live payment never becomes a sandbox one from an answer.
+        let live = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
+        let loud = Fixtures.body("process-processing-mobile-money-sandbox").setting(["transaction", "sandbox"], to: true)
+        live.transport.on("POST", "/pay/process", .json(202, loud))
+        live.transport.answer("status-processing")
+        let liveController = await live.start()
+        XCTAssertFalse(liveController.isSandbox)
+        liveController.setPhone("670000000")
+        liveController.submitMobileMoney()
+        await waitUntil("approval") { liveController.state == .approvalRequired }
+        XCTAssertEqual(liveController.transaction?.sandbox, true)
+        XCTAssertFalse(liveController.isSandbox, "only the loaded payment says sandbox")
         liveController.hostGone()
     }
 

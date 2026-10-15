@@ -226,7 +226,9 @@ before anything is sent. The sheet then asks the payer to approve the payment on
 
 For your own screens, `MobileMoneyData.shared` checks, formats and reads numbers:
 `isValid(_:country:)`, `nationalDigits(_:country:)`, `e164(_:country:)`, `formatAsYouType(_:)`,
-`detectOperator(_:country:)`, and `badge(operatorId:fallbackName:)` for an operator's badge.
+`detectOperator(_:country:)`, and `badge(operatorId:fallbackName:)` for an operator's badge. In a
+sandbox payment (`SessionTransaction.sandbox`), pass `sandbox: true` to `isValid`, `detectOperator`
+and `e164`, or use `sandboxTestNumber(_:country:)`: Wajub's test numbers are then accepted.
 
 ## Cards
 
