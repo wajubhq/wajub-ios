@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0 (unreleased)
+## 1.0.0 — 2026-10-15
 
 - First release of the Wajub iOS SDK, a Swift package for iOS 15 and later with two products:
   `WajubMobile` (the API client and the checkout's logic, Foundation only) and `WajubMobileUI` (the
