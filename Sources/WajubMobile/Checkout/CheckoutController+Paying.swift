@@ -142,8 +142,7 @@ extension CheckoutController {
             isBusy = true
             rereadStatus(orFail: .catalogue(WajubError.Code.notProcessable, language))
         case 409 where body?.errorCode == WajubError.Code.paymentInProgress:
-            // A charge is already running: wait for it, no error, and never cancel from now on.
-            sawProcessing = true
+            // A charge is already running: wait for it, no error.
             screen = .pending(PendingScreen())
             update()
             startWatching()

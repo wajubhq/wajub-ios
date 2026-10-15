@@ -114,7 +114,7 @@ another `present` can follow at once.
 | `returnURL` | `nil` | An `https` universal link back into your app, sent as `return_url` to provider pages. Without it the payer comes back by hand |
 | `mobileMoney` | | `MobileMoneyOptions(country:countryLocked:operatorMode:)`: start on a country (ISO-2), hide the country selector, `.choose` (the operator list, default) or `.detect` (the detected operator as a badge in the number field) |
 | `realtime` | from the session | `RealtimeOptions(enabled:host:port:tls:)`: another Pusher-protocol host (self-hosted Reverb or Soketi) or `enabled: false` for polling only |
-| `cancelOnDismiss` | `true` | Closing the sheet before any attempt cancels the payment (`POST /pay/cancel`). `false` keeps it open so you can present it again. A payment that may still move is never cancelled: not while loading, not when the session loaded `processing`, not once an attempt of the sheet is running or was seen `processing` — closing then resolves `processing` (or `cancelled` with no call) |
+| `cancelOnDismiss` | `true` | Closing the sheet before any attempt cancels the payment (`POST /pay/cancel`). `false` keeps it open so you can present it again. A payment that may still move is never cancelled: not while loading, and not unless its last known status is `pending` with no attempt undecided (from the Pay press until a definitive answer) — closing then resolves `processing`. After a definitive refusal the payment is `pending` again and can be cancelled |
 | `autoCloseSuccess` | `3000` | Milliseconds before the success screen closes itself; `0` keeps it |
 | `callbacks` | | See below |
 | `cardCollector` | `nil` | Needed for cards routed to Stripe |

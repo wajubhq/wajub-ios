@@ -22,9 +22,10 @@
   with Stripe's SDK (WajubMobile does not depend on it). Provider pages open in Safari, never in a
   WebView, and the payment is checked as soon as the payer comes back.
 - One-tap wallets such as Djamo, and Wave's redirect.
-- Closing the sheet cancels the payment (`POST /pay/cancel`) only when nothing can still move: a
-  payment loaded `processing`, or with an attempt of the sheet running or seen `processing`, is never
-  cancelled, and closing then resolves `processing`.
+- Closing the sheet cancels the payment (`POST /pay/cancel`) only when nothing can still move: its
+  last known status is `pending` and no attempt is undecided (from the Pay press until a definitive
+  answer). Otherwise closing resolves `processing`; after a definitive refusal "Cancel payment" is
+  offered again.
 - The card providers' confirmation steps (code, PIN, phone, date of birth, billing address) and the
   sandbox 3-D Secure email code, each with its own screen, resend countdown and remaining attempts.
 - The payment's status is followed in real time over Pusher, Reverb or Soketi (`PresentOptions.realtime`
