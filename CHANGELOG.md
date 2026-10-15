@@ -40,5 +40,11 @@
   charged twice. Each submission sends a fresh Altcha solution when the payment asks for one.
 - `PresentOptions.appearance` takes Wajub.js's appearance object (presets, variables, light, dark
   or automatic scheme, your app's own theme with `inherit`), on top of the merchant's branding from
-  the dashboard; the skeleton loader and `readyTimeout` with a Retry button.
+  the dashboard; the skeleton loader and `readyTimeout` with a Retry button. Wajub.js's `"none"` is
+  `.noPreset` for `theme` and `.noShadow` for `shadow`, so neither can be mistaken for `nil`.
+- A privacy manifest (`PrivacyInfo.xcprivacy`) for your app's privacy report: no tracking, the
+  system boot time only to time the SDK's waits, and the data a payment sends to Wajub. The README's
+  Privacy section lists what to declare in App Store Connect.
+- `Checkout.present(_:presenter:browser:)` runs the checkout under your own UI: it hands the
+  `CheckoutController` it creates to your `CheckoutPresenting`.
 - Every text in English and French, following the payment's language unless `locale` says otherwise.

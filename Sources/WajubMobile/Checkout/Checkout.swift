@@ -20,7 +20,8 @@ public enum Checkout {
     static let dismissalGrace: UInt64 = 2_000_000_000
 
     /// Presents a checkout and resolves exactly once, when the sheet is gone: a new `present()` can
-    /// follow at once.
+    /// follow at once. It creates the `CheckoutController` from `options`, hands it to
+    /// `presenter.present(_:)`, starts it, and calls `presenter.dismiss(_:completion:)` once it settles.
     ///
     /// Throws `WajubError` `sheet_already_presented` at once when a sheet is already open (the open
     /// sheet is left alone).
