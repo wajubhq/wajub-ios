@@ -1,24 +1,5 @@
 {
-  "schema_version": 1,
-  "source": {
-    "repository": "checkout.wajub",
-    "commit": "fc15c2b",
-    "files": [
-      "src/lib/validation/mobile-money.ts",
-      "src/lib/constants/countries.ts",
-      "src/components/checkout/MobileMoneyForm.tsx (BRAND)"
-    ],
-    "api_mirror": "api.wajub c02bc570 app/Services/Payment/AbstractPaymentProcessingService.php:55 (OPERATOR_INDEPENDENT_WALLETS)"
-  },
-  "algorithms": {
-    "sanitize": "Keep the characters 0-9 and '+'; then remove every '+'.",
-    "national_digits": "sanitize(input); if the result starts with the country's dial_code digits (without '+'), remove them; then remove every leading '0'; then, in a country with earlier_number, digits of earlier_number.length that start with one of earlier_number.starts_with take earlier_number.prefix in front (Benin, 8 digits before 30 Nov 2024: '96 12 34 56' -> '196123456').",
-    "validate": "If national_number_length is set: national_digits must have exactly that many digits, and, in a country with earlier_number, start with earlier_number.prefix. Otherwise: sanitize(input) must be 7 to 15 digits.",
-    "detect_operator": "Evaluate prefix_rules in order against national_digits — in a country with earlier_number, digits that do not start with earlier_number.prefix are read with it in front, so a number typed the earlier way names its operator as it is typed ('96' -> '196'); the first rule with a starts_with entry that the digits start with wins. No rule, or no match: null. Wallets held whatever the operator (operator_independent_wallets) are never detected.",
-    "e164": "dial_code + (e164_trunk_zero == 'keep' ? '0' : '') + national_digits. 'keep' marks a plan whose leading 0 is part of the number (Côte d'Ivoire, Benin): national_digits, national_number_length and the prefix rules leave it out, as for every other country, and E.164 puts it back.",
-    "format_as_you_type": "Digits only (no '+'), at most 15, grouped by two with single spaces: '671234567' -> '67 12 34 56 7'.",
-    "brand_fallback": "When an operator has no usable logo URL, draw a round badge with brand.background, brand.color and brand.mark (else the first 8 alphanumerics of brand.label, upper-cased). No brand entry: background #525252, color #ffffff, label from the channel name."
-  },
+  "schema_version": 2,
   "fallback_brand": {
     "color": "#ffffff",
     "background": "#525252"
@@ -36,64 +17,377 @@
     "opay",
     "palmpay"
   ],
-  "errata": [
-    {
-      "countries": [
-        "CI",
-        "BJ"
-      ],
-      "field": "national_digits",
-      "web_behaviour": "checkout.wajub keeps the 0 the payer typed, and gives it back to a number typed without it only when that makes a mobile number (CI 01, 05, 07; BJ 01 2[5-9], 01 [4-69]): 0303000000 and 0130000000 are accepted, 303000000 and 130000000 refused.",
-      "why_mobile_differs": "national_digits drops every leading 0 (the shared algorithm), so each pair reads the same and both are accepted; api.wajub decides on such a number either way."
+  "sandbox_test_numbers": {
+    "outcome_suffixes": {
+      "000000": "success",
+      "000001": "insufficient_funds",
+      "000002": "failure",
+      "000003": "timeout",
+      "000004": "canceled",
+      "000009": "success, then the refund fails"
     },
-    {
-      "countries": [
-        "MW",
-        "ET",
-        "CD",
-        "NE"
-      ],
-      "field": "dial_code",
-      "web_behaviour": "Absent from checkout's COUNTRIES: the web sends national digits with no '+' and no dial code for these.",
-      "why_mobile_differs": "ITU dial codes added (dial_code_source: itu) so the E.164 sent is valid."
+    "prefixes": {
+      "CM": {
+        "mtn": [
+          "+23767"
+        ],
+        "orange": [
+          "+23769"
+        ],
+        "eu": [
+          "+23768"
+        ],
+        "yoomee": [
+          "+23766"
+        ]
+      },
+      "CI": {
+        "mtn": [
+          "+22505"
+        ],
+        "orange": [
+          "+22507"
+        ],
+        "moov": [
+          "+22501"
+        ],
+        "wave": [
+          "+22503"
+        ],
+        "green": [
+          "+22509"
+        ]
+      },
+      "NG": {
+        "mtn": [
+          "+2348"
+        ],
+        "orange": [
+          "+2347"
+        ]
+      },
+      "SN": {
+        "orange": [
+          "+22177"
+        ],
+        "free": [
+          "+22176"
+        ],
+        "wave": [
+          "+22178"
+        ]
+      },
+      "GA": {
+        "airtel": [
+          "+2410",
+          "+24174",
+          "+24177"
+        ],
+        "eu": [
+          "+2411"
+        ],
+        "moov": [
+          "+2416",
+          "+24162",
+          "+24165",
+          "+24166"
+        ]
+      },
+      "BJ": {
+        "mtn": [
+          "+22990",
+          "+2290190"
+        ],
+        "moov": [
+          "+22991",
+          "+2290191"
+        ],
+        "glo": [
+          "+22997",
+          "+2290197"
+        ]
+      },
+      "BF": {
+        "orange": [
+          "+22670"
+        ],
+        "moov": [
+          "+22671"
+        ]
+      },
+      "UG": {
+        "mtn": [
+          "+25677"
+        ],
+        "airtel": [
+          "+25675"
+        ]
+      },
+      "RW": {
+        "mtn": [
+          "+25078"
+        ],
+        "airtel": [
+          "+25073"
+        ]
+      },
+      "CD": {
+        "airtel": [
+          "+24399"
+        ],
+        "orange": [
+          "+24389"
+        ],
+        "vodacom": [
+          "+24381"
+        ],
+        "eu": [
+          "+24382"
+        ],
+        "africell": [
+          "+24390"
+        ]
+      },
+      "TZ": {
+        "airtel": [
+          "+25567"
+        ],
+        "tigo": [
+          "+25565"
+        ],
+        "vodafone": [
+          "+25574"
+        ],
+        "halopesa": [
+          "+25562"
+        ],
+        "mpesa": [
+          "+25576"
+        ]
+      },
+      "KE": {
+        "mpesa": [
+          "+25470"
+        ],
+        "mpesa_till": [
+          "+25471"
+        ],
+        "airtel_till": [
+          "+25473"
+        ],
+        "equitel": [
+          "+25476"
+        ],
+        "tkash": [
+          "+25477"
+        ],
+        "airtel": [
+          "+25478"
+        ]
+      },
+      "GH": {
+        "mtn": [
+          "+23324"
+        ],
+        "vodafone": [
+          "+23320"
+        ],
+        "airtel": [
+          "+23326"
+        ],
+        "airteltigo": [
+          "+23327"
+        ]
+      },
+      "TD": {
+        "eu": [
+          "+23566"
+        ]
+      },
+      "CF": {
+        "eu": [
+          "+23670"
+        ]
+      },
+      "CG": {
+        "eu": [
+          "+24205"
+        ],
+        "mtn": [
+          "+24206"
+        ],
+        "airtel": [
+          "+24204"
+        ]
+      },
+      "ZM": {
+        "mtn": [
+          "+26096"
+        ],
+        "airtel": [
+          "+26097"
+        ],
+        "zamtel": [
+          "+26095"
+        ]
+      },
+      "MW": {
+        "airtel": [
+          "+26599"
+        ],
+        "tnm": [
+          "+26588"
+        ]
+      },
+      "ML": {
+        "orange": [
+          "+22370"
+        ],
+        "moov": [
+          "+22366"
+        ]
+      },
+      "TG": {
+        "moov": [
+          "+22899"
+        ],
+        "tmoney": [
+          "+22890"
+        ]
+      },
+      "GN": {
+        "mtn": [
+          "+22466"
+        ],
+        "orange": [
+          "+22462"
+        ]
+      },
+      "LR": {
+        "mtn": [
+          "+23188"
+        ]
+      },
+      "MZ": {
+        "mpesa": [
+          "+25884"
+        ]
+      },
+      "EG": {
+        "vodafone": [
+          "+2010"
+        ]
+      },
+      "SL": {
+        "orange": [
+          "+23276"
+        ]
+      },
+      "ZA": {
+        "capitec": [
+          "+2761"
+        ]
+      }
     }
-  ],
+  },
   "countries": {
     "BF": {
       "name": "Burkina Faso",
       "dial_code": "+226",
-      "dial_code_source": "checkout",
-      "national_number_length": null,
-      "e164_trunk_zero": "drop",
-      "placeholder": "0700000000",
-      "placeholder_formatted": "07 00 00 00 00",
+      "leading_zero": "significant",
+      "national_number_length": 8,
+      "number_prefix": null,
+      "mobile_prefixes": [
+        "01",
+        "02",
+        "03",
+        "04",
+        "05",
+        "06",
+        "07"
+      ],
+      "earlier": null,
+      "placeholder": "70123456",
+      "placeholder_formatted": "70 12 34 56",
       "operators": [
         "orange",
         "wave"
       ],
-      "prefix_rules": []
+      "prefix_rules": [
+        {
+          "starts_with": [
+            "01",
+            "02",
+            "03",
+            "50",
+            "51",
+            "52",
+            "53",
+            "60",
+            "61",
+            "62",
+            "63",
+            "70",
+            "71",
+            "72",
+            "73"
+          ],
+          "operator": "moov"
+        },
+        {
+          "starts_with": [
+            "04",
+            "05",
+            "06",
+            "07",
+            "4",
+            "54",
+            "55",
+            "56",
+            "57",
+            "64",
+            "65",
+            "66",
+            "67",
+            "74",
+            "75",
+            "76",
+            "77"
+          ],
+          "operator": "orange"
+        }
+      ]
     },
     "BJ": {
       "name": "Bénin",
       "dial_code": "+229",
-      "dial_code_source": "checkout",
-      "national_number_length": 9,
-      "e164_trunk_zero": "keep",
-      "earlier_number": {
+      "leading_zero": "significant",
+      "national_number_length": 10,
+      "number_prefix": "01",
+      "mobile_prefixes": [
+        "0125",
+        "0126",
+        "0127",
+        "0128",
+        "0129",
+        "014",
+        "015",
+        "016",
+        "019"
+      ],
+      "earlier": {
         "length": 8,
-        "prefix": "1",
-        "starts_with": [
-          "25",
-          "26",
-          "27",
-          "28",
-          "29",
-          "4",
-          "5",
-          "6",
-          "9"
-        ],
-        "source": "ARCEP Bénin: 01 in front of every number since 30 Nov 2024; repaired only onto a mobile range (01 2[5-9], 01 [4-69]), as checkout.wajub does"
+        "map": {
+          "25": "0125",
+          "26": "0126",
+          "27": "0127",
+          "28": "0128",
+          "29": "0129",
+          "4": "014",
+          "5": "015",
+          "6": "016",
+          "9": "019"
+        }
       },
       "placeholder": "0190123456",
       "placeholder_formatted": "01 90 12 34 56",
@@ -106,57 +400,55 @@
       "prefix_rules": [
         {
           "starts_with": [
-            "142",
-            "146",
-            "150",
-            "151",
-            "152",
-            "153",
-            "154",
-            "156",
-            "157",
-            "159",
-            "161",
-            "162",
-            "166",
-            "167",
-            "169",
-            "190",
-            "191",
-            "196",
-            "197"
+            "0145",
+            "0155",
+            "0158",
+            "0160",
+            "0163",
+            "0164",
+            "0165",
+            "0168",
+            "0194",
+            "0195",
+            "0198",
+            "0199"
           ],
-          "operator": "mtn",
-          "verified": true,
-          "source_pattern": "^01(?:4[26]|5[0-46-79]|6[12679]|9[0167])"
+          "operator": "moov"
         },
         {
           "starts_with": [
-            "145",
-            "155",
-            "158",
-            "160",
-            "163",
-            "164",
-            "165",
-            "168",
-            "194",
-            "195",
-            "198",
-            "199"
+            "0142",
+            "0146",
+            "0150",
+            "0151",
+            "0152",
+            "0153",
+            "0154",
+            "0156",
+            "0157",
+            "0159",
+            "0161",
+            "0162",
+            "0166",
+            "0167",
+            "0169",
+            "0190",
+            "0191",
+            "0196",
+            "0197"
           ],
-          "operator": "moov",
-          "verified": true,
-          "source_pattern": "^01(?:45|5[58]|6[03-58]|9[4589])"
+          "operator": "mtn"
         }
       ]
     },
     "CD": {
-      "name": "DR Congo",
+      "name": "RD Congo",
       "dial_code": "+243",
-      "dial_code_source": "itu",
-      "national_number_length": null,
-      "e164_trunk_zero": "drop",
+      "leading_zero": "trunk",
+      "national_number_length": 9,
+      "number_prefix": null,
+      "mobile_prefixes": null,
+      "earlier": null,
       "placeholder": "0812345678",
       "placeholder_formatted": "08 12 34 56 78",
       "operators": [
@@ -164,28 +456,101 @@
         "tigo",
         "vodafone"
       ],
+      "prefix_rules": [
+        {
+          "starts_with": [
+            "90",
+            "91"
+          ],
+          "operator": "africell"
+        },
+        {
+          "starts_with": [
+            "96",
+            "97",
+            "98",
+            "99"
+          ],
+          "operator": "airtel"
+        },
+        {
+          "starts_with": [
+            "80",
+            "84",
+            "85",
+            "89"
+          ],
+          "operator": "orange"
+        },
+        {
+          "starts_with": [
+            "81",
+            "82",
+            "83",
+            "86"
+          ],
+          "operator": "vodacom"
+        }
+      ]
+    },
+    "CF": {
+      "name": "Centrafrique",
+      "dial_code": "+236",
+      "leading_zero": "trunk",
+      "national_number_length": 8,
+      "number_prefix": null,
+      "mobile_prefixes": null,
+      "earlier": null,
+      "placeholder": "72123456",
+      "placeholder_formatted": "72 12 34 56",
+      "operators": [],
       "prefix_rules": []
     },
     "CG": {
       "name": "Congo-Brazzaville",
       "dial_code": "+242",
-      "dial_code_source": "checkout",
-      "national_number_length": null,
-      "e164_trunk_zero": "drop",
-      "placeholder": "0500000000",
-      "placeholder_formatted": "05 00 00 00 00",
+      "leading_zero": "significant",
+      "national_number_length": 9,
+      "number_prefix": "0",
+      "mobile_prefixes": [
+        "04",
+        "05",
+        "06"
+      ],
+      "earlier": null,
+      "placeholder": "061234567",
+      "placeholder_formatted": "06 12 34 56 7",
       "operators": [
         "mtn",
         "airtel"
       ],
-      "prefix_rules": []
+      "prefix_rules": [
+        {
+          "starts_with": [
+            "05"
+          ],
+          "operator": "airtel"
+        },
+        {
+          "starts_with": [
+            "06"
+          ],
+          "operator": "mtn"
+        }
+      ]
     },
     "CI": {
       "name": "Côte d'Ivoire",
       "dial_code": "+225",
-      "dial_code_source": "checkout",
-      "national_number_length": 9,
-      "e164_trunk_zero": "keep",
+      "leading_zero": "significant",
+      "national_number_length": 10,
+      "number_prefix": "0",
+      "mobile_prefixes": [
+        "01",
+        "05",
+        "07"
+      ],
+      "earlier": null,
       "placeholder": "0700000000",
       "placeholder_formatted": "07 00 00 00 00",
       "operators": [
@@ -199,36 +564,32 @@
       "prefix_rules": [
         {
           "starts_with": [
-            "5"
+            "01"
           ],
-          "operator": "mtn",
-          "verified": true,
-          "source_pattern": "^05"
+          "operator": "moov"
         },
         {
           "starts_with": [
-            "7"
+            "05"
           ],
-          "operator": "orange",
-          "verified": true,
-          "source_pattern": "^07"
+          "operator": "mtn"
         },
         {
           "starts_with": [
-            "1"
+            "07"
           ],
-          "operator": "moov",
-          "verified": true,
-          "source_pattern": "^01"
+          "operator": "orange"
         }
       ]
     },
     "CM": {
       "name": "Cameroun",
       "dial_code": "+237",
-      "dial_code_source": "checkout",
+      "leading_zero": "trunk",
       "national_number_length": 9,
-      "e164_trunk_zero": "drop",
+      "number_prefix": null,
+      "mobile_prefixes": null,
+      "earlier": null,
       "placeholder": "671234567",
       "placeholder_formatted": "67 12 34 56 7",
       "operators": [
@@ -238,80 +599,126 @@
       "prefix_rules": [
         {
           "starts_with": [
-            "67",
-            "68"
-          ],
-          "operator": "mtn",
-          "verified": true,
-          "source_pattern": "^(67|68)"
-        },
-        {
-          "starts_with": [
-            "69"
-          ],
-          "operator": "orange",
-          "verified": true,
-          "source_pattern": "^69"
-        },
-        {
-          "starts_with": [
             "650",
             "651",
             "652",
             "653",
-            "654"
+            "654",
+            "67",
+            "680",
+            "681",
+            "682",
+            "683"
           ],
-          "operator": "mtn",
-          "verified": false,
-          "source_pattern": "^65[0-4]"
+          "operator": "mtn"
         },
         {
           "starts_with": [
+            "64",
             "655",
             "656",
             "657",
             "658",
-            "659"
+            "659",
+            "686",
+            "687",
+            "688",
+            "689",
+            "69"
           ],
-          "operator": "orange",
-          "verified": false,
-          "source_pattern": "^65[5-9]"
+          "operator": "orange"
+        }
+      ]
+    },
+    "EG": {
+      "name": "Egypt",
+      "dial_code": "+20",
+      "leading_zero": "trunk",
+      "national_number_length": 10,
+      "number_prefix": null,
+      "mobile_prefixes": null,
+      "earlier": null,
+      "placeholder": "01001234567",
+      "placeholder_formatted": "01 00 12 34 56 7",
+      "operators": [],
+      "prefix_rules": [
+        {
+          "starts_with": [
+            "10"
+          ],
+          "operator": "vodafone"
         }
       ]
     },
     "ET": {
       "name": "Ethiopia",
       "dial_code": "+251",
-      "dial_code_source": "itu",
-      "national_number_length": null,
-      "e164_trunk_zero": "drop",
+      "leading_zero": "trunk",
+      "national_number_length": 9,
+      "number_prefix": null,
+      "mobile_prefixes": null,
+      "earlier": null,
       "placeholder": "0912345678",
       "placeholder_formatted": "09 12 34 56 78",
       "operators": [
         "mpesa"
       ],
-      "prefix_rules": []
+      "prefix_rules": [
+        {
+          "starts_with": [
+            "7"
+          ],
+          "operator": "mpesa"
+        }
+      ]
     },
     "GA": {
       "name": "Gabon",
       "dial_code": "+241",
-      "dial_code_source": "checkout",
-      "national_number_length": null,
-      "e164_trunk_zero": "drop",
-      "placeholder": "0600000000",
-      "placeholder_formatted": "06 00 00 00 00",
+      "leading_zero": "trunk",
+      "national_number_length": 8,
+      "number_prefix": null,
+      "mobile_prefixes": null,
+      "earlier": {
+        "length": 8,
+        "map": {
+          "01": "11",
+          "02": "62",
+          "04": "74",
+          "05": "65",
+          "06": "66",
+          "07": "77"
+        }
+      },
+      "placeholder": "66123456",
+      "placeholder_formatted": "66 12 34 56",
       "operators": [
         "airtel",
         "moov"
       ],
-      "prefix_rules": []
+      "prefix_rules": [
+        {
+          "starts_with": [
+            "7"
+          ],
+          "operator": "airtel"
+        },
+        {
+          "starts_with": [
+            "6"
+          ],
+          "operator": "moov"
+        }
+      ]
     },
     "GH": {
       "name": "Ghana",
       "dial_code": "+233",
-      "dial_code_source": "checkout",
+      "leading_zero": "trunk",
       "national_number_length": 9,
-      "e164_trunk_zero": "drop",
+      "number_prefix": null,
+      "mobile_prefixes": null,
+      "earlier": null,
       "placeholder": "0244123456",
       "placeholder_formatted": "02 44 12 34 56",
       "operators": [
@@ -322,67 +729,74 @@
       "prefix_rules": [
         {
           "starts_with": [
-            "24",
-            "54",
-            "55"
+            "23",
+            "26",
+            "27",
+            "56",
+            "57"
           ],
-          "operator": "mtn",
-          "verified": true,
-          "source_pattern": "^(24|54|55)"
+          "operator": "airteltigo"
+        },
+        {
+          "starts_with": [
+            "24",
+            "25",
+            "53",
+            "54",
+            "55",
+            "59"
+          ],
+          "operator": "mtn"
         },
         {
           "starts_with": [
             "20",
             "50"
           ],
-          "operator": "vodafone",
-          "verified": true,
-          "source_pattern": "^(20|50)"
-        },
-        {
-          "starts_with": [
-            "26",
-            "56",
-            "27",
-            "57"
-          ],
-          "operator": "airteltigo",
-          "verified": true,
-          "source_pattern": "^(26|56|27|57)"
-        },
-        {
-          "starts_with": [
-            "25",
-            "59"
-          ],
-          "operator": "mtn",
-          "verified": false,
-          "source_pattern": "^(25|59)"
+          "operator": "vodafone"
         }
       ]
     },
     "GN": {
       "name": "Guinée",
       "dial_code": "+224",
-      "dial_code_source": "checkout",
-      "national_number_length": null,
-      "e164_trunk_zero": "drop",
-      "placeholder": "0700000000",
-      "placeholder_formatted": "07 00 00 00 00",
+      "leading_zero": "trunk",
+      "national_number_length": 9,
+      "number_prefix": null,
+      "mobile_prefixes": null,
+      "earlier": null,
+      "placeholder": "621234567",
+      "placeholder_formatted": "62 12 34 56 7",
       "operators": [
         "mtn",
         "orange"
       ],
-      "prefix_rules": []
+      "prefix_rules": [
+        {
+          "starts_with": [
+            "66"
+          ],
+          "operator": "mtn"
+        },
+        {
+          "starts_with": [
+            "61",
+            "62"
+          ],
+          "operator": "orange"
+        }
+      ]
     },
     "KE": {
       "name": "Kenya",
       "dial_code": "+254",
-      "dial_code_source": "checkout",
+      "leading_zero": "trunk",
       "national_number_length": 9,
-      "e164_trunk_zero": "drop",
-      "placeholder": "712345678",
-      "placeholder_formatted": "71 23 45 67 8",
+      "number_prefix": null,
+      "mobile_prefixes": null,
+      "earlier": null,
+      "placeholder": "0712345678",
+      "placeholder_formatted": "07 12 34 56 78",
       "operators": [
         "airtel",
         "mpesa"
@@ -390,74 +804,250 @@
       "prefix_rules": [
         {
           "starts_with": [
-            "7"
+            "10",
+            "73",
+            "750",
+            "751",
+            "752",
+            "753",
+            "754",
+            "755",
+            "756",
+            "760",
+            "762",
+            "763",
+            "764",
+            "765",
+            "766",
+            "767",
+            "78"
           ],
-          "operator": "mpesa",
-          "verified": true,
-          "source_pattern": "^7"
+          "operator": "airtel"
+        },
+        {
+          "starts_with": [
+            "11",
+            "14",
+            "18",
+            "70",
+            "71",
+            "72",
+            "740",
+            "741",
+            "742",
+            "743",
+            "745",
+            "746",
+            "748",
+            "749",
+            "757",
+            "758",
+            "759",
+            "768",
+            "769",
+            "79"
+          ],
+          "operator": "mpesa"
+        }
+      ]
+    },
+    "LR": {
+      "name": "Liberia",
+      "dial_code": "+231",
+      "leading_zero": "trunk",
+      "national_number_length": 9,
+      "number_prefix": null,
+      "mobile_prefixes": null,
+      "earlier": null,
+      "placeholder": "0886123456",
+      "placeholder_formatted": "08 86 12 34 56",
+      "operators": [],
+      "prefix_rules": [
+        {
+          "starts_with": [
+            "555",
+            "6",
+            "8"
+          ],
+          "operator": "mtn"
         }
       ]
     },
     "MA": {
       "name": "Maroc",
       "dial_code": "+212",
-      "dial_code_source": "checkout",
-      "national_number_length": null,
-      "e164_trunk_zero": "drop",
+      "leading_zero": "trunk",
+      "national_number_length": 9,
+      "number_prefix": null,
+      "mobile_prefixes": null,
+      "earlier": null,
       "placeholder": "0612345678",
       "placeholder_formatted": "06 12 34 56 78",
       "operators": [
         "orange"
       ],
-      "prefix_rules": []
+      "prefix_rules": [
+        {
+          "starts_with": [
+            "612",
+            "614",
+            "617",
+            "619",
+            "620",
+            "621",
+            "625",
+            "631",
+            "632",
+            "644",
+            "645",
+            "649",
+            "656",
+            "657",
+            "660",
+            "663",
+            "664",
+            "665",
+            "669",
+            "674",
+            "675",
+            "679",
+            "684",
+            "688",
+            "691",
+            "693",
+            "694",
+            "73",
+            "77",
+            "78"
+          ],
+          "operator": "orange"
+        }
+      ]
     },
     "ML": {
       "name": "Mali",
       "dial_code": "+223",
-      "dial_code_source": "checkout",
-      "national_number_length": null,
-      "e164_trunk_zero": "drop",
-      "placeholder": "0700000000",
-      "placeholder_formatted": "07 00 00 00 00",
+      "leading_zero": "trunk",
+      "national_number_length": 8,
+      "number_prefix": null,
+      "mobile_prefixes": null,
+      "earlier": null,
+      "placeholder": "70123456",
+      "placeholder_formatted": "70 12 34 56",
       "operators": [
         "orange",
         "moov",
         "wave"
       ],
-      "prefix_rules": []
+      "prefix_rules": [
+        {
+          "starts_with": [
+            "2079",
+            "217",
+            "6",
+            "89",
+            "95",
+            "96",
+            "97",
+            "98",
+            "99"
+          ],
+          "operator": "moov"
+        },
+        {
+          "starts_with": [
+            "200",
+            "7",
+            "82",
+            "83",
+            "84",
+            "85",
+            "90",
+            "91",
+            "92",
+            "93",
+            "94"
+          ],
+          "operator": "orange"
+        }
+      ]
     },
     "MW": {
       "name": "Malawi",
       "dial_code": "+265",
-      "dial_code_source": "itu",
-      "national_number_length": null,
-      "e164_trunk_zero": "drop",
+      "leading_zero": "trunk",
+      "national_number_length": 9,
+      "number_prefix": null,
+      "mobile_prefixes": null,
+      "earlier": null,
       "placeholder": "0991234567",
       "placeholder_formatted": "09 91 23 45 67",
       "operators": [
         "airtel"
       ],
+      "prefix_rules": [
+        {
+          "starts_with": [
+            "9"
+          ],
+          "operator": "airtel"
+        },
+        {
+          "starts_with": [
+            "3",
+            "8"
+          ],
+          "operator": "tnm"
+        }
+      ]
+    },
+    "MZ": {
+      "name": "Mozambique",
+      "dial_code": "+258",
+      "leading_zero": "trunk",
+      "national_number_length": 9,
+      "number_prefix": null,
+      "mobile_prefixes": null,
+      "earlier": null,
+      "placeholder": "841234567",
+      "placeholder_formatted": "84 12 34 56 7",
+      "operators": [],
       "prefix_rules": []
     },
     "NE": {
       "name": "Niger",
       "dial_code": "+227",
-      "dial_code_source": "itu",
-      "national_number_length": null,
-      "e164_trunk_zero": "drop",
-      "placeholder": "0700000000",
-      "placeholder_formatted": "07 00 00 00 00",
+      "leading_zero": "trunk",
+      "national_number_length": 8,
+      "number_prefix": null,
+      "mobile_prefixes": null,
+      "earlier": null,
+      "placeholder": "90123456",
+      "placeholder_formatted": "90 12 34 56",
       "operators": [
         "moov"
       ],
-      "prefix_rules": []
+      "prefix_rules": [
+        {
+          "starts_with": [
+            "74",
+            "84",
+            "85",
+            "94",
+            "95"
+          ],
+          "operator": "moov"
+        }
+      ]
     },
     "NG": {
       "name": "Nigeria",
       "dial_code": "+234",
-      "dial_code_source": "checkout",
+      "leading_zero": "trunk",
       "national_number_length": 10,
-      "e164_trunk_zero": "drop",
+      "number_prefix": null,
+      "mobile_prefixes": null,
+      "earlier": null,
       "placeholder": "08031234567",
       "placeholder_formatted": "08 03 12 34 56 7",
       "operators": [
@@ -469,64 +1059,110 @@
       "prefix_rules": [
         {
           "starts_with": [
+            "701",
+            "708",
+            "802",
+            "808",
+            "812",
+            "901",
+            "902",
+            "904",
+            "907",
+            "911",
+            "912"
+          ],
+          "operator": "airtel"
+        },
+        {
+          "starts_with": [
+            "7025",
+            "7026",
+            "703",
+            "704",
+            "706",
+            "707",
             "803",
             "806",
             "810",
             "813",
             "814",
             "816",
-            "703",
-            "706",
             "903",
-            "906"
-          ],
-          "operator": "mtn",
-          "verified": true,
-          "source_pattern": "^(803|806|810|813|814|816|703|706|903|906)"
-        },
-        {
-          "starts_with": [
+            "906",
             "913",
             "916"
           ],
-          "operator": "mtn",
-          "verified": false,
-          "source_pattern": "^(913|916)"
+          "operator": "mtn"
         }
       ]
     },
     "RW": {
       "name": "Rwanda",
       "dial_code": "+250",
-      "dial_code_source": "checkout",
-      "national_number_length": null,
-      "e164_trunk_zero": "drop",
+      "leading_zero": "trunk",
+      "national_number_length": 9,
+      "number_prefix": null,
+      "mobile_prefixes": null,
+      "earlier": null,
       "placeholder": "0781234567",
       "placeholder_formatted": "07 81 23 45 67",
       "operators": [
         "mtn"
       ],
-      "prefix_rules": []
+      "prefix_rules": [
+        {
+          "starts_with": [
+            "72",
+            "73"
+          ],
+          "operator": "airtel"
+        },
+        {
+          "starts_with": [
+            "78",
+            "79"
+          ],
+          "operator": "mtn"
+        }
+      ]
     },
     "SL": {
       "name": "Sierra Leone",
       "dial_code": "+232",
-      "dial_code_source": "checkout",
-      "national_number_length": null,
-      "e164_trunk_zero": "drop",
-      "placeholder": "076000000",
-      "placeholder_formatted": "07 60 00 00 0",
+      "leading_zero": "trunk",
+      "national_number_length": 8,
+      "number_prefix": null,
+      "mobile_prefixes": null,
+      "earlier": null,
+      "placeholder": "76123456",
+      "placeholder_formatted": "76 12 34 56",
       "operators": [
         "orange"
       ],
-      "prefix_rules": []
+      "prefix_rules": [
+        {
+          "starts_with": [
+            "71",
+            "72",
+            "73",
+            "74",
+            "75",
+            "76",
+            "78",
+            "79"
+          ],
+          "operator": "orange"
+        }
+      ]
     },
     "SN": {
       "name": "Sénégal",
       "dial_code": "+221",
-      "dial_code_source": "checkout",
+      "leading_zero": "trunk",
       "national_number_length": 9,
-      "e164_trunk_zero": "drop",
+      "number_prefix": null,
+      "mobile_prefixes": null,
+      "earlier": null,
       "placeholder": "771234567",
       "placeholder_formatted": "77 12 34 56 7",
       "operators": [
@@ -537,52 +1173,83 @@
       "prefix_rules": [
         {
           "starts_with": [
+            "76"
+          ],
+          "operator": "free"
+        },
+        {
+          "starts_with": [
+            "71",
             "77",
             "78"
           ],
-          "operator": "orange",
-          "verified": true,
-          "source_pattern": "^7[78]"
-        },
-        {
-          "starts_with": [
-            "76"
-          ],
-          "operator": "free",
-          "verified": true,
-          "source_pattern": "^76"
-        },
-        {
-          "starts_with": [
-            "70"
-          ],
-          "operator": "orange",
-          "verified": false,
-          "source_pattern": "^70"
+          "operator": "orange"
         }
       ]
+    },
+    "TD": {
+      "name": "Tchad",
+      "dial_code": "+235",
+      "leading_zero": "trunk",
+      "national_number_length": 8,
+      "number_prefix": null,
+      "mobile_prefixes": null,
+      "earlier": null,
+      "placeholder": "66123456",
+      "placeholder_formatted": "66 12 34 56",
+      "operators": [],
+      "prefix_rules": []
     },
     "TG": {
       "name": "Togo",
       "dial_code": "+228",
-      "dial_code_source": "checkout",
-      "national_number_length": null,
-      "e164_trunk_zero": "drop",
-      "placeholder": "0700000000",
-      "placeholder_formatted": "07 00 00 00 00",
+      "leading_zero": "trunk",
+      "national_number_length": 8,
+      "number_prefix": null,
+      "mobile_prefixes": null,
+      "earlier": null,
+      "placeholder": "90123456",
+      "placeholder_formatted": "90 12 34 56",
       "operators": [
         "moov",
         "ecocash",
         "tmoney"
       ],
-      "prefix_rules": []
+      "prefix_rules": [
+        {
+          "starts_with": [
+            "78",
+            "79",
+            "96",
+            "97",
+            "98",
+            "99"
+          ],
+          "operator": "moov"
+        },
+        {
+          "starts_with": [
+            "70",
+            "71",
+            "72",
+            "73",
+            "90",
+            "91",
+            "92",
+            "93"
+          ],
+          "operator": "tmoney"
+        }
+      ]
     },
     "TZ": {
       "name": "Tanzania",
       "dial_code": "+255",
-      "dial_code_source": "checkout",
+      "leading_zero": "trunk",
       "national_number_length": 9,
-      "e164_trunk_zero": "drop",
+      "number_prefix": null,
+      "mobile_prefixes": null,
+      "earlier": null,
       "placeholder": "0741234567",
       "placeholder_formatted": "07 41 23 45 67",
       "operators": [
@@ -593,56 +1260,52 @@
       "prefix_rules": [
         {
           "starts_with": [
+            "60",
+            "66",
+            "68",
+            "69",
+            "78"
+          ],
+          "operator": "airtel"
+        },
+        {
+          "starts_with": [
+            "61",
+            "62",
+            "63"
+          ],
+          "operator": "halopesa"
+        },
+        {
+          "starts_with": [
+            "72",
             "74",
             "75",
-            "76"
+            "76",
+            "79"
           ],
-          "operator": "mpesa",
-          "verified": true,
-          "source_pattern": "^(74|75|76)"
+          "operator": "mpesa"
         },
         {
           "starts_with": [
             "65",
-            "67"
+            "67",
+            "70",
+            "71",
+            "77"
           ],
-          "operator": "tigo",
-          "verified": true,
-          "source_pattern": "^(65|67)"
-        },
-        {
-          "starts_with": [
-            "71"
-          ],
-          "operator": "tigo",
-          "verified": false,
-          "source_pattern": "^71"
-        },
-        {
-          "starts_with": [
-            "68",
-            "69"
-          ],
-          "operator": "airtel",
-          "verified": true,
-          "source_pattern": "^(68|69)"
-        },
-        {
-          "starts_with": [
-            "78"
-          ],
-          "operator": "airtel",
-          "verified": false,
-          "source_pattern": "^78"
+          "operator": "tigo"
         }
       ]
     },
     "UG": {
       "name": "Uganda",
       "dial_code": "+256",
-      "dial_code_source": "checkout",
+      "leading_zero": "trunk",
       "national_number_length": 9,
-      "e164_trunk_zero": "drop",
+      "number_prefix": null,
+      "mobile_prefixes": null,
+      "earlier": null,
       "placeholder": "0771234567",
       "placeholder_formatted": "07 71 23 45 67",
       "operators": [
@@ -652,52 +1315,94 @@
       "prefix_rules": [
         {
           "starts_with": [
-            "77",
-            "78"
-          ],
-          "operator": "mtn",
-          "verified": true,
-          "source_pattern": "^(77|78)"
-        },
-        {
-          "starts_with": [
-            "76"
-          ],
-          "operator": "mtn",
-          "verified": false,
-          "source_pattern": "^76"
-        },
-        {
-          "starts_with": [
             "70",
-            "74"
-          ],
-          "operator": "airtel",
-          "verified": true,
-          "source_pattern": "^(70|74)"
-        },
-        {
-          "starts_with": [
+            "730",
+            "731",
+            "74",
             "75"
           ],
-          "operator": "airtel",
-          "verified": false,
-          "source_pattern": "^75"
+          "operator": "airtel"
+        },
+        {
+          "starts_with": [
+            "7241",
+            "7242",
+            "7243",
+            "7244",
+            "7245",
+            "7246",
+            "7247",
+            "7248",
+            "7249",
+            "737",
+            "76",
+            "77",
+            "78",
+            "790",
+            "791",
+            "792",
+            "793",
+            "794",
+            "795",
+            "796",
+            "797"
+          ],
+          "operator": "mtn"
         }
       ]
     },
     "ZA": {
       "name": "South Africa",
       "dial_code": "+27",
-      "dial_code_source": "checkout",
-      "national_number_length": null,
-      "e164_trunk_zero": "drop",
+      "leading_zero": "trunk",
+      "national_number_length": 9,
+      "number_prefix": null,
+      "mobile_prefixes": null,
+      "earlier": null,
       "placeholder": "0821234567",
       "placeholder_formatted": "08 21 23 45 67",
       "operators": [
         "capitec"
       ],
       "prefix_rules": []
+    },
+    "ZM": {
+      "name": "Zambia",
+      "dial_code": "+260",
+      "leading_zero": "trunk",
+      "national_number_length": 9,
+      "number_prefix": null,
+      "mobile_prefixes": null,
+      "earlier": null,
+      "placeholder": "0961234567",
+      "placeholder_formatted": "09 61 23 45 67",
+      "operators": [],
+      "prefix_rules": [
+        {
+          "starts_with": [
+            "57",
+            "77",
+            "97"
+          ],
+          "operator": "airtel"
+        },
+        {
+          "starts_with": [
+            "56",
+            "76",
+            "96"
+          ],
+          "operator": "mtn"
+        },
+        {
+          "starts_with": [
+            "55",
+            "75",
+            "95"
+          ],
+          "operator": "zamtel"
+        }
+      ]
     }
   },
   "operators": {

@@ -9,8 +9,13 @@
   logo iOS can draw; `logo` and `logoURL` are unchanged.
 - `WajubSession.verifyStep(_:id:fields:)` answers a confirmation step and says what follows it,
   another step included, for apps that draw their own screens.
-- Benin numbers have ten digits, their leading 0 kept, and MTN and Moov are recognised from the
-  number; an 8-digit number from before the change is read with `01` in front.
+- Mobile Money numbers are read by each country's current numbering plan: the leading 0 is kept
+  where it is part of the number (Côte d'Ivoire, Benin, Congo, Burkina Faso), a number from an
+  earlier plan is read in its current form (Benin's 8-digit numbers, Gabon's), and the operator is
+  recognised from the number in more countries.
+- In a sandbox payment, Wajub's Mobile Money test numbers are accepted, paid through the operator
+  they test, and sent as typed. `MobileMoneyData.sandboxTestNumber(_:country:)` and the `sandbox:`
+  variants of `isValid`, `detectOperator` and `e164` do the same for your own screens.
 - `PresentOptions.realtime` and `RealtimeOptions` are deprecated: the payment's live updates need no
   setting. Code that sets them still compiles and behaves as before; remove them, as they will go
   in a later major version.

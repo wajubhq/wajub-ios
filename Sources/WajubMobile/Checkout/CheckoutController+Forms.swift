@@ -32,7 +32,7 @@ extension CheckoutController {
             if mobileMoney == nil, let session {
                 mobileMoney = MobileMoneyForm(channels: method.channels, config: config, language: language,
                                               amount: session.transaction.amountTotal, options: options.mobileMoney,
-                                              geoCountry: session.geoCountry)
+                                              geoCountry: session.geoCountry, sandbox: session.transaction.sandbox)
             }
         case .card(let flavour):
             if cardForm?.flavour != flavour {

@@ -49,10 +49,13 @@ public struct MobileMoneyForm: Equatable, Sendable {
     private let language: WajubLanguage
     private let amount: Double
     private let config: SdkConfigResponse?
+    /// A sandbox payment: its test numbers are accepted.
+    private let sandbox: Bool
 
     init(channels: [SessionChannel], config: SdkConfigResponse?, language: WajubLanguage, amount: Double, options: MobileMoneyOptions,
-         geoCountry: String?) {
+         geoCountry: String?, sandbox: Bool = false) {
         self.channels = channels
+        self.sandbox = sandbox
         self.config = config
         self.language = language
         self.amount = amount
@@ -82,7 +85,7 @@ public struct MobileMoneyForm: Equatable, Sendable {
     public var dialCode: String { data.countries[country]?.dialCode ?? "" }
     public var placeholder: String { data.countries[country]?.placeholderFormatted ?? "" }
     public var formattedPhone: String { data.formatAsYouType(phone) }
-    public var detectedOperator: String? { data.detectOperator(phone, country: country) }
+    public var detectedOperator: String? { data.detectOperator(phone, country: country, sandbox: sandbox) }
     public var selectedChoice: OperatorChoice? { choices.first { $0.id == selection } }
     /// `operator_unavailable`: no operator the payer can pick for the country; Pay is disabled.
     public var hasNoOperator: Bool { !choices.contains { $0.limit == nil } }
@@ -161,7 +164,7 @@ public struct MobileMoneyForm: Equatable, Sendable {
     func validate(sandbox: Bool) -> (error: WajubError?, warning: WajubError?) {
         // An operator out of its limits is not offered: never a mismatch toward it.
         let code = MobileMoneyForm.validationCode(phone: phone, country: country, choiceIds: enabledIds,
-                                                  selection: selection, data: data)
+                                                  selection: selection, data: data, sandbox: self.sandbox)
         guard let code else { return (nil, nil) }
         var error = WajubError.catalogue(code, language, values: mismatchLabels)
         error.param = code == WajubError.Code.operatorRequired ? "data.operator" : "data.phone"
@@ -178,7 +181,7 @@ public struct MobileMoneyForm: Equatable, Sendable {
     func request(returnURL: String?) -> (channel: String, data: [String: JSONValue])? {
         guard let choice = selectedChoice else { return nil }
         var data: [String: JSONValue] = [
-            "phone": .string(self.data.e164(phone, country: country)),
+            "phone": .string(self.data.e164(phone, country: country, sandbox: self.sandbox)),
             "country": .string(country),
         ]
         if let hint = MobileMoneyForm.operatorHint(isAggregate: choice.isAggregateMember, selection: choice.id,
@@ -235,10 +238,10 @@ public struct MobileMoneyForm: Equatable, Sendable {
 
     /// `phone_required`, `invalid_phone`, `operator_mismatch`, `operator_required`, in that order.
     static func validationCode(phone: String, country: String, choiceIds: [String], selection: String?,
-                               data: MobileMoneyData) -> String? {
+                               data: MobileMoneyData, sandbox: Bool = false) -> String? {
         if data.sanitize(phone).isEmpty { return WajubError.Code.phoneRequired }
-        if !data.isValid(phone, country: country) { return WajubError.Code.invalidPhone }
-        if let detected = data.detectOperator(phone, country: country), choiceIds.contains(detected), let selection,
+        if !data.isValid(phone, country: country, sandbox: sandbox) { return WajubError.Code.invalidPhone }
+        if let detected = data.detectOperator(phone, country: country, sandbox: sandbox), choiceIds.contains(detected), let selection,
            detected != selection, !data.operatorIndependentWallets.contains(selection) {
             return WajubError.Code.operatorMismatch
         }

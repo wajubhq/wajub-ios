@@ -245,14 +245,17 @@ final class MobileMoneyTests: XCTestCase {
     /// MM-09 loads the shared data file
     func test_MM_09_loadsTheSharedDataFile() throws {
         let loaded = try MobileMoneyData.load()
-        XCTAssertEqual(loaded.countries.count, 23)
+        XCTAssertEqual(loaded.countries.count, 29)
         XCTAssertEqual(loaded.countries["CM"]?.dialCode, "+237")
         XCTAssertEqual(loaded.operatorIndependentWallets, ["wave", "eu", "express_union", "djamo", "capitec", "opay", "palmpay"])
 
         let source = try Data(contentsOf: Fixtures.packageRoot.appendingPathComponent("Sources/WajubMobile/Resources/mobile-money.json"))
-        let future = try JSONValue.parse(source).setting(["schema_version"], to: 2)
-        XCTAssertThrowsError(try MobileMoneyData(data: future.serialized())) { error in
-            XCTAssertEqual(error as? MobileMoneyData.LoadError, .unsupportedSchemaVersion(2))
+        XCTAssertEqual(try JSONValue.parse(source)["schema_version"]?.int, 2)
+        for version in [1, 3] {
+            let other = try JSONValue.parse(source).setting(["schema_version"], to: .number(Double(version)))
+            XCTAssertThrowsError(try MobileMoneyData(data: other.serialized())) { error in
+                XCTAssertEqual(error as? MobileMoneyData.LoadError, .unsupportedSchemaVersion(version))
+            }
         }
 
         // No second copy of the tables in code.
@@ -266,6 +269,52 @@ final class MobileMoneyTests: XCTestCase {
                 XCTAssertFalse(text.contains(marker), "\(file.lastPathComponent) hard-codes \(marker)")
             }
         }
+    }
+
+    /// MM-10 takes the sandbox test numbers
+    @MainActor func test_MM_10_takesTheSandboxTestNumbers() async {
+        let vectors = Fixtures.vectors["sandbox_numbers"]?.array ?? []
+        XCTAssertFalse(vectors.isEmpty)
+        for vector in vectors {
+            let input = vector["input"]?.string ?? ""
+            let country = vector["country"]?.string ?? ""
+            let label = "\(country) \(input)"
+            let test = data.sandboxTestNumber(input, country: country)
+            XCTAssertEqual(test?.operatorId, vector["operator"]?.string, label)
+            XCTAssertEqual(test?.e164, vector["e164"]?.string, label)
+            if let operatorId = vector["operator"]?.string, let e164 = vector["e164"]?.string {
+                // In a sandbox payment: valid, the prefix's operator, sent as read.
+                XCTAssertTrue(data.isValid(input, country: country, sandbox: true), label)
+                XCTAssertEqual(data.detectOperator(input, country: country, sandbox: true), operatorId, label)
+                XCTAssertEqual(data.e164(input, country: country, sandbox: true), e164, label)
+            }
+            // Outside a sandbox payment the prefixes mean nothing.
+            XCTAssertEqual(data.isValid(input, country: country, sandbox: false), data.isValid(input, country: country), label)
+            XCTAssertEqual(data.detectOperator(input, country: country, sandbox: false), data.detectOperator(input, country: country), label)
+            XCTAssertEqual(data.e164(input, country: country, sandbox: false), data.e164(input, country: country), label)
+        }
+
+        // The sheet: a sandbox payment takes Express Union's test number, sent as typed.
+        let sandbox = Harness(session: "session-sandbox-cm", config: "sdk-config-sandbox")
+        sandbox.transport.answer("process-processing-mobile-money-sandbox")
+        let controller = await sandbox.start()
+        controller.selectMethod("mobile_money")
+        controller.setPhone("680000000")
+        XCTAssertEqual(controller.mobileMoney?.detectedOperator, "eu")
+        XCTAssertEqual(controller.mobileMoney?.selection, "eu")
+        controller.submitMobileMoney()
+        await waitUntil("sent") { sandbox.processBodies().count == 1 }
+        XCTAssertEqual(sandbox.processBodies()[0]["data"]?["phone"]?.string, "+237680000000")
+        XCTAssertEqual(sandbox.processBodies()[0]["channel"]?.string, "cm.eu")
+        controller.hostGone()
+
+        // A live payment: the same number is MTN's.
+        let live = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
+        let liveController = await live.start()
+        liveController.selectMethod("mobile_money")
+        liveController.setPhone("680000000")
+        XCTAssertEqual(liveController.mobileMoney?.detectedOperator, "mtn")
+        liveController.hostGone()
     }
 
     private func makeForm(_ session: String, config: String? = nil) -> MobileMoneyForm {

@@ -231,7 +231,7 @@ public struct PresentOptions {
     @available(*, deprecated, message: "The payment's live updates need no setting; drop `realtime:`, which will be removed.")
     public init(sessionToken: String, locale: String? = nil, appearance: Appearance? = nil, loader: LoaderStyle = .skeleton,
                 readyTimeout: Int = 15_000, returnURL: String? = nil, mobileMoney: MobileMoneyOptions = MobileMoneyOptions(),
-                realtime: RealtimeOptions?, cancelOnDismiss: Bool = true, autoCloseSuccess: Int = 3_000,
+                realtime: RealtimeOptions? = nil, cancelOnDismiss: Bool = true, autoCloseSuccess: Int = 3_000,
                 callbacks: CheckoutCallbacks = CheckoutCallbacks(), cardCollector: CardCollector? = nil) {
         self.init(sessionToken: sessionToken, locale: locale, appearance: appearance, loader: loader, readyTimeout: readyTimeout,
                   returnURL: returnURL, mobileMoney: mobileMoney, cancelOnDismiss: cancelOnDismiss,
