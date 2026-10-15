@@ -108,6 +108,9 @@ public struct SessionTransaction: Equatable, Sendable {
     public var processingContext: ProcessingContext?
     /// A refused try's code, when the payment carries one.
     public var errorCode: String?
+    /// The answer has the `error_code` key (even `null`): an older API leaves it out, and then whether
+    /// the payment carries a refusal is unknown.
+    var hasErrorCodeKey = false
 
     public init(json: JSONValue) throws {
         guard let amount = json["amount"]?.double else { throw WireDecodingError(field: "transaction.amount") }
@@ -134,6 +137,7 @@ public struct SessionTransaction: Equatable, Sendable {
         terminalAt = json["terminal_at"]?.nonEmptyString
         processingContext = json["processing_context"].flatMap { $0.object == nil ? nil : ProcessingContext(json: $0) }
         errorCode = json["error_code"]?.nonEmptyString
+        hasErrorCodeKey = json["error_code"] != nil
     }
 
     /// A transaction in an optional position: `nil` when absent or unreadable.

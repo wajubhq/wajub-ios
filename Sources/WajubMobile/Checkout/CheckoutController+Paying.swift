@@ -23,6 +23,7 @@ extension CheckoutController {
         }
         attempt.phone = phone
         attempt.priorErrorCode = lastErrorCode
+        attempt.priorErrorCodeKnown = lastErrorCodeKnown
         self.attempt = attempt
         isBusy = true
         banner = nil

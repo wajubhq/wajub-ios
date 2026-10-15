@@ -59,9 +59,10 @@ extension CheckoutController {
         case .pending:
             // Before the attempt was seen `processing`, a `pending` is the previous attempt's leftover.
             // After a request that got no answer, though, a refusal newer than the one the payment
-            // carried before is this attempt refused: definitive (README §2.5, §14).
-            let refusedNow = attempt?.unansweredSince != nil && update.errorCode != nil
-                && update.errorCode != attempt?.priorErrorCode
+            // carried before is this attempt refused: definitive (README §2.5, §14). Only when that
+            // earlier code is known: without it, no code is taken as a refusal before the 60 s rule.
+            let refusedNow = attempt?.unansweredSince != nil && attempt?.priorErrorCodeKnown == true
+                && update.errorCode != nil && update.errorCode != attempt?.priorErrorCode
             guard attempt?.seenProcessing == true || refusedNow else {
                 giveUpOnUnansweredRequest(update)
                 return
@@ -89,8 +90,9 @@ extension CheckoutController {
     /// form with `network_error`; the next Pay reuses the same `Idempotency-Key` (README §2.5).
     func giveUpOnUnansweredRequest(_ status: StatusUpdate) {
         // An error_code from before this attempt is a leftover; only a newer one says the request arrived.
+        // When the earlier code is unknown (an older API), no code says so: the 60 s rule applies.
         guard let attempt, let since = attempt.unansweredSince,
-              status.errorCode == nil || status.errorCode == attempt.priorErrorCode,
+              status.errorCode == nil || !attempt.priorErrorCodeKnown || status.errorCode == attempt.priorErrorCode,
               clock.uptime - since >= Timing.unansweredRequestWait else { return }
         stopWatching()
         reusableKey = attempt.key

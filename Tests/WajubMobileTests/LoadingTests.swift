@@ -72,10 +72,45 @@ final class LoadingTests: XCTestCase {
         XCTAssertEqual(error.code, "payment_declined")
         refused.hostGone()
 
-        // `null`, or an older answer without the key: no refusal.
-        XCTAssertNil(Fixtures.session("session-cm-aggregate").transaction.errorCode)
-        XCTAssertNil(try? SessionResponse(json: Fixtures.body("session-cm-aggregate").setting(["transaction", "error_code"], to: nil))
-            .transaction.errorCode)
+        // `null` with the key (2.1): no refusal, so a code read after an unanswered Pay is this attempt's.
+        let current = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
+        current.transport.on("POST", "/pay/process", .failure(.timeout))
+        current.transport.answer("status-pending-attempt-refused")
+        let known = await current.start()
+        XCTAssertNil(known.session?.transaction.errorCode)
+        XCTAssertEqual(known.session?.transaction.hasErrorCodeKey, true)
+        known.setPhone("670000000")
+        known.submitMobileMoney()
+        await current.drive(until: "pending") { known.state == .pending }
+        await current.drive(until: "refused") { known.state == .failed }
+        XCTAssertEqual(current.transport.requests("POST", "/pay/process").count, 3, "one attempt and its retries")
+        known.hostGone()
+
+        // Without the key (an API older than 2.1): the baseline is unknown, so the same code is not taken
+        // as this attempt's refusal; the 60 s rule applies.
+        let older = Harness(config: "sdk-config-cm-stripe")
+        older.transport.on("GET", "/pay/session", .json(200, Fixtures.body("session-cm-aggregate").setting(["transaction", "error_code"], to: nil)))
+        older.transport.on("POST", "/pay/process", .failure(.timeout))
+        older.transport.answer("status-pending-attempt-refused")
+        let unknown = await older.start()
+        XCTAssertNil(unknown.session?.transaction.errorCode)
+        XCTAssertEqual(unknown.session?.transaction.hasErrorCodeKey, false)
+        unknown.setPhone("670000000")
+        unknown.submitMobileMoney()
+        await older.drive(until: "pending") { unknown.state == .pending }
+        await older.advance(by: 5)
+        XCTAssertEqual(unknown.state, .pending, "not this attempt's refusal")
+        XCTAssertTrue(older.recorder.errors.isEmpty)
+        await older.drive(until: "back on the form", maxSteps: 40) { unknown.state == .collectingDetails }
+        XCTAssertEqual(unknown.banner?.code, WajubError.Code.networkError)
+        // The code is known now: the next Pay, refused with another one, fails at once.
+        older.transport.on("GET", "/pay/status", .json(200, Fixtures.body("status-pending-attempt-refused")
+            .setting(["transaction", "error_code"], to: "payment_declined")))
+        unknown.submitMobileMoney()
+        await older.drive(until: "refused") { unknown.state == .failed }
+        guard case .failed(let declined) = unknown.screen else { return XCTFail("not failed") }
+        XCTAssertEqual(declined.code, "payment_declined")
+        unknown.hostGone()
     }
 
     /// LD-02 maps unknown sessions to session_not_found

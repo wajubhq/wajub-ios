@@ -105,10 +105,18 @@ public final class CheckoutController {
         /// The `error_code` the payment already carried when this attempt was sent (a refusal left by an
         /// earlier try).
         var priorErrorCode: String?
+        /// `priorErrorCode` is known. When it is not (a session from an API older than 2.1, without the
+        /// key), no code is taken as this attempt's refusal before the 60 s rule.
+        var priorErrorCodeKnown = false
     }
 
     /// The last `error_code` the payment was seen with (a refused try stays on it until the next one).
-    var lastErrorCode: String?
+    var lastErrorCode: String? {
+        didSet { if lastErrorCode != nil { lastErrorCodeKnown = true } }
+    }
+    /// `lastErrorCode` is known: the session said it (2.1, the key is there even when `null`), or the
+    /// sheet saw a code itself.
+    var lastErrorCodeKnown = false
     /// The `Idempotency-Key` the next Pay reuses, after a request that may never have reached the API.
     var reusableKey: String?
     /// The provider page is open in the in-app browser (not handed to another app).
@@ -316,6 +324,7 @@ public final class CheckoutController {
         lastTransaction = session.transaction
         // A refusal the payment already carries (another device's try) is not news for the 60 s rule.
         if let code = session.transaction.errorCode { lastErrorCode = code }
+        if session.transaction.hasErrorCodeKey { lastErrorCodeKnown = true }
         language = WajubLanguage.resolve(option: options.locale, session: session.locale, device: client.device.language)
         if let challenge = session.altcha { solveAltcha(challenge) }
 
