@@ -99,7 +99,8 @@ func pay(token: String, from viewController: UIViewController) async {
 ```
 
 `present` resolves exactly once, when the sheet is gone, with the same value `onComplete` receives:
-another `present` can follow at once.
+another `present` can follow at once. One called from `onComplete`, or right after the presenting
+screen went away, waits for the settled sheet to be gone; only a sheet still open makes it throw.
 
 ## Options
 
@@ -144,7 +145,7 @@ once). A callback that throws is caught and logged; the sheet carries on.
 |---|---|
 | `.complete(payment:transaction:)` | The sheet closed after the success screen |
 | `.processing(transaction:)` | The payer closed the sheet while an attempt was running, or the 15-minute watch ended: money may still move |
-| `.failed(error:transaction:)` | The sheet closed on a failure (with the error the payer saw; a payment still cancellable is also released with `POST /pay/cancel` when `cancelOnDismiss` is on, without `onCancel`), an expiry, a load error, or a payment cancelled elsewhere (`payment_cancelled`) |
+| `.failed(error:transaction:)` | The sheet closed on a failure (with the error the payer saw; a payment still cancellable is also released with `POST /pay/cancel` when `cancelOnDismiss` is on, without `onCancel`; one that may still run, after `unsupported_action` or `redirect_unavailable`, is not), an expiry, a load error, or a payment cancelled elsewhere (`payment_cancelled`) |
 | `.cancelled(reason:redirectURL:)` | "Cancel payment" (`.payerCancelled`), a dismiss before any attempt (`.dismissed`), or the presenting screen going away first (`.hostGone`) |
 
 `PaymentSuccess` is Wajub.js's: `id` (Wajub's payment id), `reference` (yours), `amount` (what the
@@ -188,6 +189,7 @@ sheet shows "Payment in progress" and watches the payment. If 60 s after the las
 still has not started (a refusal left by an earlier try does not count), the request most likely
 never reached Wajub: the sheet goes back to the form with a connection error, and the next Pay sends
 the same `Idempotency-Key`, so a request that did arrive is answered again instead of charged twice.
+A refusal newer than the attempt means the request arrived and was refused: the failure shows at once.
 
 When the payment asks for an Altcha proof of work, each submission gets a fresh one (the session is
 reloaded for a new challenge after each use); without one, nothing is sent and the sheet asks the

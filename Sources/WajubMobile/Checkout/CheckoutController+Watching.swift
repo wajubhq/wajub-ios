@@ -57,16 +57,24 @@ extension CheckoutController {
             attempt?.inFlight = false
             expire(.catalogue(WajubError.Code.sessionExpired, language))
         case .pending:
-            guard attempt?.seenProcessing == true else {
+            // Before the attempt was seen `processing`, a `pending` is the previous attempt's leftover.
+            // After a request that got no answer, though, a refusal newer than the one the payment
+            // carried before is this attempt refused: definitive (README §2.5, §14).
+            let refusedNow = attempt?.unansweredSince != nil && update.errorCode != nil
+                && update.errorCode != attempt?.priorErrorCode
+            guard attempt?.seenProcessing == true || refusedNow else {
                 giveUpOnUnansweredRequest(update)
                 return
             }
             // While the provider's page is open the payer may still pay there (another card, a retry):
             // a refused try is not the end yet. On a client session the provider's own verdict comes
-            // from /pay/client-session/complete, never from a refused try seen by the watch: a payment
-            // made on the page always wins over it.
+            // from /pay/client-session/complete first: a payment made on the page always wins over a
+            // refused try, which stands only once /complete has answered without a verdict.
             if isBrowserOpen && browserInApp { return }
-            if attempt?.clientSession != nil { return }
+            if let attempt, attempt.clientSession != nil, !attempt.clientSessionAnswered {
+                if attempt.completingClientSession { self.attempt?.heldRefusal = update }
+                return
+            }
             attempt?.inFlight = false
             fail(attemptEndedError(update))
         case .processing, .partial:
@@ -155,6 +163,8 @@ extension CheckoutController {
                 self.update()
                 self.startWatching()
             } else {
+                // Still `pending`: the request was refused, and the payment can be cancelled again.
+                self.pendingAgain()
                 self.fail(fallback)
             }
         }
