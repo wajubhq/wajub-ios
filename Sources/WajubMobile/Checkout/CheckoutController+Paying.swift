@@ -270,11 +270,13 @@ extension CheckoutController {
         emit { try self.options.callbacks.onError?(error) }
     }
 
-    /// The 422 that refuses a missing or wrong Altcha solution: its `altcha` validation key, else (as a
-    /// last resort, with no field at fault) its message.
+    /// The 422 that refuses a missing or wrong Altcha solution: its `error_code` `security_check_failed`;
+    /// from an older API, its `altcha` validation key, else (with no field at fault) its message.
     func isSecurityRefusal(_ answer: APIAnswer) -> Bool {
-        guard answer.status == 422, session?.altcha != nil || altchaTask != nil else { return false }
+        guard answer.status == 422 else { return false }
         let body = answer.body.map(APIErrorBody.init(json:))
+        if body?.errorCode == WajubError.Code.securityCheckFailed { return true }
+        guard session?.altcha != nil || altchaTask != nil else { return false }
         let keys = Set(body?.errors.keys.map { $0 } ?? [])
         if keys.contains("altcha") || keys.contains("data.altcha") { return true }
         guard keys.isSubset(of: ["request"]) else { return false }

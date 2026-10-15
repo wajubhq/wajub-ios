@@ -26,6 +26,7 @@
       "fee": null,
       "status": "pending",
       "status_label": "Pending",
+      "error_code": null,
       "sandbox": false,
       "description": "Commande #4172",
       "customer": {
@@ -33,9 +34,9 @@
         "email": "awa.ngono@example.com"
       },
       "receipt_url": null,
-      "expires_at": "2026-10-14T09:30:00+00:00",
-      "created_at": "2026-10-14T09:30:00+00:00",
-      "updated_at": "2026-10-14T09:30:00+00:00",
+      "expires_at": "2026-10-15T09:30:00+00:00",
+      "created_at": "2026-10-15T09:30:00+00:00",
+      "updated_at": "2026-10-15T09:30:00+00:00",
       "terminal_at": null
     },
     "tax": null,
@@ -73,7 +74,7 @@
       "tab_inactive_bg": "#F3F4F6",
       "tab_inactive_text": "#374151",
       "font_weight_heading": 600,
-      "font_weight_body": "400",
+      "font_weight_body": 400,
       "step_active_bg": null,
       "step_done_bg": null,
       "step_inactive_bg": null,
@@ -99,6 +100,7 @@
         "name.fr": "Carte bancaire",
         "type": "card",
         "logo": "https://assets.wajub.com/img/channels/card.svg",
+        "logo_png": null,
         "countries": [],
         "min_amount": null,
         "max_amount": null,
@@ -112,6 +114,7 @@
         "name.fr": "Mobile Money",
         "type": "mobile_money",
         "logo": "https://assets.wajub.com/img/channels/momo.svg",
+        "logo_png": "https://api.wajub.com/img/channels/momo.png",
         "countries": [
           "CM"
         ],
@@ -123,13 +126,15 @@
             "slug": "cm.mtn",
             "operator": "mtn",
             "name": "MTN Mobile Money",
-            "logo": "https://assets.wajub.com/img/channels/momo.svg"
+            "logo": "https://assets.wajub.com/img/channels/momo.svg",
+            "logo_png": "https://api.wajub.com/img/channels/momo.png"
           },
           {
             "slug": "cm.orange",
             "operator": "orange",
             "name": "Orange Money",
-            "logo": "https://assets.wajub.com/img/channels/om.svg"
+            "logo": "https://assets.wajub.com/img/channels/om.svg",
+            "logo_png": "https://api.wajub.com/img/channels/om.png"
           }
         ]
       }

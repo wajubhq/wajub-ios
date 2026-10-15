@@ -3,7 +3,7 @@
     "method": "POST",
     "path": "/pay/otp/verify",
     "body": {
-      "otp_id": "prc_B2HQg9SAUteG1BAUV8Kn",
+      "otp_id": "prc_7hQm2LxV9pR4sT1wYb3N",
       "code": "123456"
     }
   },
@@ -11,27 +11,28 @@
   "body": {
     "status": "success",
     "transaction": {
-      "id": "trx_PaystackR4tY8uIo2pLk",
-      "reference": "CMD-4172",
-      "trxref": "CMD-4172",
+      "id": "trx_PVrU8x2kQ1mNa7Lb3cDe",
+      "reference": "ORD-5521",
+      "trxref": "ORD-5521",
       "amount": 5000,
       "amount_total": 5000,
-      "amount_collected": 0,
-      "amount_paid": 0,
-      "remaining_amount": 5000,
+      "amount_collected": 5000,
+      "amount_paid": 5000,
+      "remaining_amount": 0,
       "currency": "NGN",
       "bearer": "merchant",
       "fee": null,
-      "status": "processing",
-      "status_label": "Processing",
+      "status": "succeeded",
+      "status_label": "Succeeded",
+      "error_code": null,
       "sandbox": false,
-      "description": "Commande #4172",
+      "description": "Order #5521",
       "customer": null,
-      "receipt_url": null,
+      "receipt_url": "https://invoice.wajub.com/r/trx_PVrU8x2kQ1mNa7Lb3cDe?s=SIGNATURE",
       "expires_at": null,
-      "created_at": "2026-10-14T09:30:00+00:00",
-      "updated_at": "2026-10-14T09:30:00+00:00",
-      "terminal_at": null
+      "created_at": "2026-10-15T09:30:00+00:00",
+      "updated_at": "2026-10-15T09:30:00+00:00",
+      "terminal_at": "2026-10-15T09:30:00+00:00"
     }
   }
 }

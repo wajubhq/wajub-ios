@@ -113,8 +113,8 @@ final class MobileMoneyTests: XCTestCase {
         XCTAssertEqual(aggregate.choices.map(\.label), ["MTN MoMo", "Orange Money"])
         XCTAssertEqual(aggregate.choices.map(\.channelSlug), ["cm.mobile", "cm.mobile"])
         XCTAssertEqual(aggregate.choices.map(\.operatorSlug), ["cm.mtn", "cm.orange"])
-        XCTAssertEqual(aggregate.choices.map(\.logoURL), ["https://assets.wajub.com/img/channels/momo.svg",
-                                                          "https://assets.wajub.com/img/channels/om.svg"])
+        XCTAssertEqual(aggregate.choices.map(\.logoURL), ["https://api.wajub.com/img/channels/momo.png",
+                                                          "https://api.wajub.com/img/channels/om.png"], "PNG logos (CH-06)")
         XCTAssertTrue(aggregate.choices.allSatisfy(\.isAggregateMember))
 
         let ivorian = makeForm("session-ci-xof-wallets", config: "sdk-config-ci-wallets")

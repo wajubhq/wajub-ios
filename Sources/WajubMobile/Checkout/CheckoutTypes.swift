@@ -158,7 +158,8 @@ public struct CheckoutCallbacks {
     }
 }
 
-/// `PresentOptions.realtime`: another Pusher-protocol host (a self-hosted Reverb or Soketi), or none.
+/// Deprecated: the payment's live updates need no setting, and this option will be removed.
+@available(*, deprecated, message: "The payment's live updates need no setting; this option will be removed.")
 public struct RealtimeOptions: Equatable, Sendable {
     public var enabled: Bool
     public var host: String?
@@ -173,7 +174,15 @@ public struct RealtimeOptions: Equatable, Sendable {
     }
 }
 
-/// What `present()` takes (`types.ts` `PresentOptions`).
+/// Where the live updates connect, when the deprecated `PresentOptions.realtime` says so.
+struct RealtimeOverride: Equatable, Sendable {
+    var enabled = true
+    var host: String?
+    var port: Int?
+    var tls: Bool?
+}
+
+/// What `present()` takes.
 public struct PresentOptions {
     /// The payment's `authorization_token`, from your server.
     public var sessionToken: String
@@ -186,9 +195,14 @@ public struct PresentOptions {
     /// An `https` universal link back into your app, sent as `return_url` to provider pages.
     public var returnURL: String?
     public var mobileMoney: MobileMoneyOptions
-    /// Overrides the session's realtime host, or turns realtime off.
-    public var realtime: RealtimeOptions?
-    /// A dismiss before any attempt cancels the payment (`POST /pay/cancel`). Default `true`.
+    /// Deprecated: the payment's live updates need no setting, and this option will be removed.
+    @available(*, deprecated, message: "The payment's live updates need no setting; this option will be removed.")
+    public var realtime: RealtimeOptions? {
+        get { realtimeOverride.map { RealtimeOptions(enabled: $0.enabled, host: $0.host, port: $0.port, tls: $0.tls) } }
+        set { realtimeOverride = newValue.map { RealtimeOverride(enabled: $0.enabled, host: $0.host, port: $0.port, tls: $0.tls) } }
+    }
+    var realtimeOverride: RealtimeOverride?
+    /// A dismiss before any attempt cancels the payment. Default `true`.
     public var cancelOnDismiss: Bool
     /// Milliseconds before the success screen closes itself; `0` keeps it. Default 3000.
     public var autoCloseSuccess: Int
@@ -198,7 +212,7 @@ public struct PresentOptions {
 
     public init(sessionToken: String, locale: String? = nil, appearance: Appearance? = nil, loader: LoaderStyle = .skeleton,
                 readyTimeout: Int = 15_000, returnURL: String? = nil, mobileMoney: MobileMoneyOptions = MobileMoneyOptions(),
-                realtime: RealtimeOptions? = nil, cancelOnDismiss: Bool = true, autoCloseSuccess: Int = 3_000,
+                cancelOnDismiss: Bool = true, autoCloseSuccess: Int = 3_000,
                 callbacks: CheckoutCallbacks = CheckoutCallbacks(), cardCollector: CardCollector? = nil) {
         self.sessionToken = sessionToken
         self.locale = locale
@@ -207,11 +221,22 @@ public struct PresentOptions {
         self.readyTimeout = readyTimeout
         self.returnURL = returnURL
         self.mobileMoney = mobileMoney
-        self.realtime = realtime
         self.cancelOnDismiss = cancelOnDismiss
         self.autoCloseSuccess = autoCloseSuccess
         self.callbacks = callbacks
         self.cardCollector = cardCollector
+    }
+
+    /// Deprecated: the same without `realtime`, which needs no setting and will be removed.
+    @available(*, deprecated, message: "The payment's live updates need no setting; drop `realtime:`, which will be removed.")
+    public init(sessionToken: String, locale: String? = nil, appearance: Appearance? = nil, loader: LoaderStyle = .skeleton,
+                readyTimeout: Int = 15_000, returnURL: String? = nil, mobileMoney: MobileMoneyOptions = MobileMoneyOptions(),
+                realtime: RealtimeOptions?, cancelOnDismiss: Bool = true, autoCloseSuccess: Int = 3_000,
+                callbacks: CheckoutCallbacks = CheckoutCallbacks(), cardCollector: CardCollector? = nil) {
+        self.init(sessionToken: sessionToken, locale: locale, appearance: appearance, loader: loader, readyTimeout: readyTimeout,
+                  returnURL: returnURL, mobileMoney: mobileMoney, cancelOnDismiss: cancelOnDismiss,
+                  autoCloseSuccess: autoCloseSuccess, callbacks: callbacks, cardCollector: cardCollector)
+        self.realtime = realtime
     }
 }
 

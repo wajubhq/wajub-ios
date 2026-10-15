@@ -34,7 +34,8 @@ public struct SdkChannelConfig: Equatable, Sendable {
 
 /// `GET /pay/sdk-config`.
 public struct SdkConfigResponse: Equatable, Sendable {
-    /// Keyed by raw slug (`cm.mtn`, never `cm.mobile`). Over-returns: the session decides what is shown.
+    /// Keyed by the session's slugs: an aggregate (`cm.mobile`) and its members (`cm.mtn`). An older answer had
+    /// the members only, and more channels than offered: the session decides what is shown.
     public var channels: [String: SdkChannelConfig]
 
     public init(json: JSONValue) {

@@ -10,7 +10,9 @@
     "message": "Payment status retrieved",
     "transaction": {
       "reference": "trx_test_PVrU8x2kQ1mNa7Lb3cDe",
-      "status": "processing"
+      "status": "processing",
+      "error_code": null,
+      "payer_message": null
     }
   }
 }

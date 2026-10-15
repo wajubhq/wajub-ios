@@ -36,6 +36,48 @@ final class LoadingTests: XCTestCase {
         controller.hostGone()
     }
 
+    /// LD-10 reads the refusal left at load
+    @MainActor func test_LD_10_readsTheRefusalLeftAtLoad() async {
+        // A payment back at `pending` after a refused try: the form, no failure.
+        let harness = Harness(session: "session-pending-after-refusal", config: "sdk-config-sandbox")
+        harness.transport.on("POST", "/pay/process", .failure(.timeout))
+        harness.transport.answer("status-pending-attempt-refused")
+        let controller = await harness.start()
+        XCTAssertEqual(controller.session?.transaction.errorCode, "insufficient_funds")
+        XCTAssertEqual(controller.state, .initiated)
+        XCTAssertTrue(harness.recorder.errors.isEmpty)
+        XCTAssertTrue(harness.recorder.loadErrors.isEmpty)
+        // That code is the old refusal: after a Pay without an answer, a `pending` with it is not news.
+        controller.selectMethod("mobile_money")
+        controller.setPhone("670000000")
+        controller.submitMobileMoney()
+        await harness.drive(until: "pending") { controller.state == .pending }
+        await harness.advance(by: 5)
+        XCTAssertEqual(controller.state, .pending)
+        await harness.drive(until: "back on the form", maxSteps: 40) { controller.state == .collectingDetails }
+        XCTAssertEqual(controller.banner?.code, WajubError.Code.networkError)
+        controller.hostGone()
+
+        // Another code is this sheet's refusal.
+        let declined = Harness(session: "session-pending-after-refusal", config: "sdk-config-sandbox")
+        declined.transport.on("POST", "/pay/process", .failure(.timeout))
+        declined.transport.on("GET", "/pay/status", .json(200, Fixtures.body("status-pending-attempt-refused")
+            .setting(["transaction", "error_code"], to: "payment_declined")))
+        let refused = await declined.start()
+        refused.selectMethod("mobile_money")
+        refused.setPhone("670000000")
+        refused.submitMobileMoney()
+        await declined.drive(until: "refused") { refused.state == .failed }
+        guard case .failed(let error) = refused.screen else { return XCTFail("not failed") }
+        XCTAssertEqual(error.code, "payment_declined")
+        refused.hostGone()
+
+        // `null`, or an older answer without the key: no refusal.
+        XCTAssertNil(Fixtures.session("session-cm-aggregate").transaction.errorCode)
+        XCTAssertNil(try? SessionResponse(json: Fixtures.body("session-cm-aggregate").setting(["transaction", "error_code"], to: nil))
+            .transaction.errorCode)
+    }
+
     /// LD-02 maps unknown sessions to session_not_found
     @MainActor func test_LD_02_mapsUnknownSessionsToSessionNotFound() async {
         for fixture in ["error-401-invalid-token", "error-401-missing-token", "error-403-not-a-payment-session"] {

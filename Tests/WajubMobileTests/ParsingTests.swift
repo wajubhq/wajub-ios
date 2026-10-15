@@ -6,7 +6,7 @@ final class ParsingTests: XCTestCase {
     /// PR-01 parses every fixture
     func test_PR_01_parsesEveryFixture() throws {
         let names = Fixtures.allNames
-        XCTAssertEqual(names.count, 92)
+        XCTAssertEqual(names.count, 97)
         for name in names {
             let envelope = Fixtures.envelope(name)
             let status = envelope["http_status"]?.int ?? 200
@@ -98,9 +98,14 @@ final class ParsingTests: XCTestCase {
         XCTAssertTrue(branding.isWhiteLabel)
         XCTAssertEqual(branding.overlayIntensity, 40)
         XCTAssertEqual(branding.fontWeightHeading, 600)
-        XCTAssertEqual(branding.fontWeightBody, 400)
+        XCTAssertEqual(branding.fontWeightBody, 400, "an integer (2.1)")
         XCTAssertEqual(branding.borderRadius, "12px")
         XCTAssertEqual(branding.appearanceMode, "light")
+        for older in ["session-saved-methods", "session-payer-bears-fee"] {
+            let branding = try SessionResponse(json: Fixtures.body(older)).branding
+            XCTAssertEqual(branding.fontWeightHeading, 600, older)
+            XCTAssertEqual(branding.fontWeightBody, 400, "\(older): a numeric string (2.0)")
+        }
 
         let plain = try SessionResponse(json: Fixtures.body("session-ci-xof-wallets")).branding
         XCTAssertFalse(plain.isWhiteLabel)
@@ -127,8 +132,8 @@ final class ParsingTests: XCTestCase {
         XCTAssertEqual(session.branding.cardBackgroundColor, "#FFFFFF")
         XCTAssertEqual(session.branding.cardBorderColor, "#E5E7EB")
         let sandbox = try SessionResponse(json: Fixtures.body("session-sandbox-cm"))
-        XCTAssertEqual(sandbox.channels[2].name, "Card")
-        XCTAssertEqual(sandbox.channels[2].nameFr, "Carte bancaire")
+        XCTAssertEqual(sandbox.channels[0].name, "Card")
+        XCTAssertEqual(sandbox.channels[0].nameFr, "Carte bancaire")
     }
 
     /// PR-07 accepts null optionals
@@ -142,9 +147,12 @@ final class ParsingTests: XCTestCase {
         XCTAssertNil(session.channels[0].minAmount)
         XCTAssertNil(session.altcha)
         let sandbox = try SessionResponse(json: Fixtures.body("session-sandbox-cm"))
-        XCTAssertNotNil(sandbox.echo)
-        XCTAssertNil(sandbox.echo?.key)
         XCTAssertNil(sandbox.branding.primaryColor)
+        XCTAssertNil(sandbox.transaction.errorCode, "error_code: null")
+        XCTAssertNil(sandbox.channels[0].logoPNG, "logo_png: null")
+        let older = try SessionResponse(json: Fixtures.body("session-processing-mobile-money"))
+        XCTAssertNotNil(older.echo)
+        XCTAssertNil(older.echo?.key, "key: null")
     }
 
     /// PR-08 accepts absent optional objects

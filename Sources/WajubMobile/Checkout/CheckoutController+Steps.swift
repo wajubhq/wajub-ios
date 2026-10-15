@@ -52,6 +52,10 @@ extension CheckoutController {
                 if let transaction { lastTransaction = transaction }
                 if let transaction, transaction.status.isPaid {
                     succeed(transaction)
+                } else if answer.body?["action"]?.nonEmptyString != nil {
+                    // The provider chains another step (a birthday then an OTP, a PIN then a bank page):
+                    // the answer is followed as a payment answer.
+                    handlePaymentAnswer(answer, mobileMoney: attempt?.family == "mobile_money", clientSession: false)
                 } else if transaction?.status == .failed {
                     attempt?.inFlight = false
                     fail(.catalogue(WajubError.Code.paymentFailed, language))

@@ -32,6 +32,7 @@ public struct CheckoutMethod: Equatable, Sendable, Identifiable {
     public var kind: Kind
     /// In the sheet's language.
     public var name: String
+    /// The logo to draw (a PNG where the API has one; never an SVG), or `nil`: draw the method's symbol.
     public var logo: String?
     /// The session channels behind it, in API order.
     public var channels: [SessionChannel]
@@ -73,12 +74,15 @@ enum MethodResolver {
         }
     }
 
-    /// A Mobile Money channel's sdk-config entry, by raw slug: an aggregate uses its members' entries
-    /// (`cm.mtn`, not `cm.mobile`). Without one (sandbox), `form` + `phone`.
+    /// A Mobile Money channel's sdk-config entry, under the session's slug. An aggregate has its own
+    /// entry (`cm.mobile`) and keeps its members' (`cm.mtn`): one operator uses its member's entry, the
+    /// aggregate its own, else (an older answer without it) its members'. Without any entry, `form` + `phone`.
     static func mobileMoneyConfig(_ channel: SessionChannel, operatorSlug: String? = nil, config: SdkConfigResponse?) -> SdkChannelConfig {
         let fallback = SdkChannelConfig(sdk: "form", requiredFields: ["phone"])
         guard let config else { return fallback }
         if channel.isAggregate {
+            if let operatorSlug, let entry = config.channels[operatorSlug] { return entry }
+            if let entry = config.channels[channel.slug] { return entry }
             let slugs = operatorSlug.map { [$0] } ?? channel.operators.map(\.slug)
             return slugs.lazy.compactMap { config.channels[$0] }.first ?? fallback
         }
@@ -120,15 +124,15 @@ enum MethodResolver {
             if channel.isMobileMoney {
                 guard channel == mobileMoneyChannels.first else { continue }
                 let limits = mobileMoneyChannels.map { limit($0, amount: amount) }
-                methods.append(CheckoutMethod(id: "mobile_money", kind: .mobileMoney, name: strings.mobileMoney, logo: channel.logo,
+                methods.append(CheckoutMethod(id: "mobile_money", kind: .mobileMoney, name: strings.mobileMoney, logo: channel.drawableLogo,
                                               channels: mobileMoneyChannels,
                                               limit: limits.contains(where: { $0 == nil }) ? nil : limits.first ?? nil))
             } else if channel.type == "card",
                       let flavour = cardFlavour(channel, config: config, sandbox: session.transaction.sandbox, hasCardCollector: hasCardCollector) {
-                methods.append(CheckoutMethod(id: "card", kind: .card(flavour), name: channel.localizedName(language), logo: channel.logo,
+                methods.append(CheckoutMethod(id: "card", kind: .card(flavour), name: channel.localizedName(language), logo: channel.drawableLogo,
                                               channels: [channel], limit: limit(channel, amount: amount)))
             } else {
-                methods.append(CheckoutMethod(id: channel.slug, kind: .wallet, name: channel.localizedName(language), logo: channel.logo,
+                methods.append(CheckoutMethod(id: channel.slug, kind: .wallet, name: channel.localizedName(language), logo: channel.drawableLogo,
                                               channels: [channel], limit: limit(channel, amount: amount)))
             }
         }

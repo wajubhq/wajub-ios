@@ -21,6 +21,42 @@
           "expiry_year",
           "card_holder"
         ]
+      },
+      "cm.eu": {
+        "available": true,
+        "provider": "system",
+        "sdk": "form",
+        "publishable_key": null,
+        "required_fields": [
+          "phone"
+        ]
+      },
+      "cm.mobile": {
+        "available": true,
+        "provider": "system",
+        "sdk": "form",
+        "publishable_key": null,
+        "required_fields": [
+          "phone"
+        ]
+      },
+      "cm.mtn": {
+        "available": true,
+        "provider": "system",
+        "sdk": "form",
+        "publishable_key": null,
+        "required_fields": [
+          "phone"
+        ]
+      },
+      "cm.orange": {
+        "available": true,
+        "provider": "system",
+        "sdk": "form",
+        "publishable_key": null,
+        "required_fields": [
+          "phone"
+        ]
       }
     },
     "embed_allowed_origins": null,

@@ -18,7 +18,7 @@ extension CheckoutController {
             self.watchRefusalOrRetry(answer) {}
         }
         watcher.onCap = { [weak self] in self?.capReached() }
-        if let endpoint = RealtimeEndpoint(echo: session.echo, override: options.realtime, transactionId: session.transaction.id) {
+        if let endpoint = RealtimeEndpoint(echo: session.echo, override: options.realtimeOverride, transactionId: session.transaction.id) {
             watcher.attach(realtime: endpoint, connect: connectWebSocket)
         }
         self.watcher = watcher

@@ -151,14 +151,21 @@ public struct ChannelOperator: Equatable, Sendable {
     public var operatorId: String
     /// In the session's locale.
     public var name: String
+    /// Mostly an SVG, which iOS does not draw.
     public var logo: String?
+    /// The same logo as a PNG, when the API has one.
+    public var logoPNG: String?
 
     public init(json: JSONValue) {
         slug = json["slug"]?.string ?? ""
         operatorId = json["operator"]?.string ?? ""
         name = json["name"]?.string ?? ""
         logo = json["logo"]?.nonEmptyString
+        logoPNG = json["logo_png"]?.nonEmptyString
     }
+
+    /// The logo iOS can draw: the PNG, else a logo that is not an SVG; `nil` otherwise.
+    public var drawableLogo: String? { ChannelLogo.drawable(logo: logo, png: logoPNG) }
 }
 
 /// A payment channel of the session.
@@ -171,7 +178,10 @@ public struct SessionChannel: Equatable, Sendable {
     public var nameFr: String?
     /// `mobile_money`, `mobile`, `card`, `wallet`, …
     public var type: String
+    /// Mostly an SVG, which iOS does not draw.
     public var logo: String?
+    /// The same logo as a PNG, when the API has one.
+    public var logoPNG: String?
     /// ISO-2, upper case. May be empty (card).
     public var countries: [String]
     public var minAmount: Double?
@@ -187,6 +197,7 @@ public struct SessionChannel: Equatable, Sendable {
         nameFr = json["name.fr"]?.nonEmptyString
         type = json["type"]?.string ?? ""
         logo = json["logo"]?.nonEmptyString
+        logoPNG = json["logo_png"]?.nonEmptyString
         countries = json["countries"]?.strings.map { $0.uppercased() } ?? []
         minAmount = json["min_amount"]?.double
         maxAmount = json["max_amount"]?.double
@@ -199,6 +210,9 @@ public struct SessionChannel: Equatable, Sendable {
 
     /// An aggregate (`cm.mobile`) folds several operators.
     public var isAggregate: Bool { !operators.isEmpty }
+
+    /// The logo iOS can draw: the PNG, else a logo that is not an SVG; `nil` otherwise.
+    public var drawableLogo: String? { ChannelLogo.drawable(logo: logo, png: logoPNG) }
 
     /// The name for the sheet's language: `name.fr` in French, `name` in English.
     public func localizedName(_ language: WajubLanguage) -> String {
@@ -398,5 +412,24 @@ public struct SessionResponse: Equatable, Sendable {
         echo = json["echo"].flatMap { $0.object == nil ? nil : EchoConfig(json: $0) }
         savedMethods = json["saved_methods"]?.array.map { $0.map(SavedMethod.init(json:)) }
         downloadReceipt = json["features"]?["download_receipt"]?.bool ?? false
+    }
+}
+
+/// Which channel or operator logo iOS can draw (it has no SVG decoder).
+enum ChannelLogo {
+    /// `logo_png` when set, else `logo` when it is not an SVG; `https` only.
+    static func drawable(logo: String?, png: String?) -> String? {
+        if let png, isHTTPS(png) { return png }
+        guard let logo, isHTTPS(logo), !isSVG(logo) else { return nil }
+        return logo
+    }
+
+    static func isHTTPS(_ url: String) -> Bool {
+        url.lowercased().hasPrefix("https://")
+    }
+
+    static func isSVG(_ url: String) -> Bool {
+        let path = (URL(string: url)?.path ?? url).lowercased()
+        return path.hasSuffix(".svg") || path.hasSuffix(".svgz")
     }
 }

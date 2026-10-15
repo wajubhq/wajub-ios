@@ -9,17 +9,15 @@
     "status": "OK",
     "message": "SDK configuration retrieved",
     "channels": {
-      "ci.mtn": {
+      "ci.djamo": {
         "available": true,
-        "provider": "scripted_ci",
+        "provider": "djamo",
         "sdk": "form",
         "publishable_key": null,
-        "required_fields": [
-          "phone"
-        ],
+        "required_fields": [],
         "client_session": false
       },
-      "ci.orange": {
+      "ci.mtn": {
         "available": true,
         "provider": "scripted_ci",
         "sdk": "form",
@@ -39,7 +37,7 @@
         ],
         "client_session": false
       },
-      "ci.wave": {
+      "ci.orange": {
         "available": true,
         "provider": "scripted_ci",
         "sdk": "form",
@@ -49,20 +47,14 @@
         ],
         "client_session": false
       },
-      "ci.djamo": {
+      "ci.wave": {
         "available": true,
-        "provider": "djamo",
+        "provider": "scripted_ci",
         "sdk": "form",
         "publishable_key": null,
-        "required_fields": [],
-        "client_session": false
-      },
-      "sn.djamo": {
-        "available": true,
-        "provider": "djamo",
-        "sdk": "form",
-        "publishable_key": null,
-        "required_fields": [],
+        "required_fields": [
+          "phone"
+        ],
         "client_session": false
       }
     },

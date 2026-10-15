@@ -192,7 +192,7 @@ final class WatchingTests: XCTestCase {
         await waitUntil("socket") { harness.sockets.count == 1 }
         let socket = harness.sockets[0]
         XCTAssertEqual(socket.url.absoluteString,
-                       "wss://ws.wajub.com:443/app/wajub-app-key?protocol=7&client=wajub-ios&version=1.0.0&flash=false")
+                       "wss://ws.wajub.com:443/app/wajub-app-key?protocol=7&client=wajub-ios&version=1.1.0&flash=false")
         socket.push(["event": "pusher:connection_established", "data": .string("{\"socket_id\":\"123456.7890123\",\"activity_timeout\":120}")])
         await waitUntil("subscribed") { socket.sentFrames.contains { $0["event"]?.string == "pusher:subscribe" } }
         let auth = try XCTUnwrap(harness.transport.requests("POST", "/pay/broadcasting/auth").first)
@@ -217,22 +217,24 @@ final class WatchingTests: XCTestCase {
         let session = Fixtures.session("session-ci-xof-wallets")
         let pusher = try XCTUnwrap(RealtimeEndpoint(echo: session.echo, override: nil, transactionId: session.transaction.id))
         XCTAssertEqual(pusher.url?.absoluteString,
-                       "wss://ws-eu.pusher.com:443/app/pusher-app-key?protocol=7&client=wajub-ios&version=1.0.0&flash=false")
+                       "wss://ws-eu.pusher.com:443/app/pusher-app-key?protocol=7&client=wajub-ios&version=1.1.0&flash=false")
         let reverb = Fixtures.session("session-cm-aggregate")
-        let custom = try XCTUnwrap(RealtimeEndpoint(echo: reverb.echo, override: RealtimeOptions(host: "reverb.shop.example", port: 8080, tls: false),
+        let custom = try XCTUnwrap(RealtimeEndpoint(echo: reverb.echo, override: RealtimeOverride(host: "reverb.shop.example", port: 8080, tls: false),
                                                     transactionId: reverb.transaction.id))
         XCTAssertEqual(custom.url?.absoluteString,
-                       "ws://reverb.shop.example:8080/app/wajub-app-key?protocol=7&client=wajub-ios&version=1.0.0&flash=false")
+                       "ws://reverb.shop.example:8080/app/wajub-app-key?protocol=7&client=wajub-ios&version=1.1.0&flash=false")
         XCTAssertEqual(custom.channel, "private-payment.trx_PVrU8x2kQ1mNa7Lb3cDe")
     }
 
     /// WT-04 falls back to polling
     @MainActor func test_WT_04_fallsBackToPolling() async {
         let sandbox = Fixtures.session("session-sandbox-cm")
-        XCTAssertNil(RealtimeEndpoint(echo: sandbox.echo, override: nil, transactionId: sandbox.transaction.id), "key: null")
-        XCTAssertNil(RealtimeEndpoint(echo: nil, override: nil, transactionId: "trx"), "no echo")
+        XCTAssertNil(sandbox.echo, "no key: no echo (2.1)")
+        XCTAssertNil(RealtimeEndpoint(echo: sandbox.echo, override: nil, transactionId: sandbox.transaction.id), "no echo")
+        let older = Fixtures.session("session-processing-mobile-money")
+        XCTAssertNil(RealtimeEndpoint(echo: older.echo, override: nil, transactionId: older.transaction.id), "key: null (2.0)")
         let live = Fixtures.session("session-cm-aggregate")
-        XCTAssertNil(RealtimeEndpoint(echo: live.echo, override: RealtimeOptions(enabled: false), transactionId: live.transaction.id))
+        XCTAssertNil(RealtimeEndpoint(echo: live.echo, override: RealtimeOverride(enabled: false), transactionId: live.transaction.id))
 
         let harness = Harness(session: "session-sandbox-cm")
         harness.transport.answer("process-processing-mobile-money-sandbox", "status-processing")
