@@ -248,6 +248,39 @@ final class LifecycleTests: XCTestCase {
         await refused.advance(by: 5)
         XCTAssertEqual(refused.controller.state, .failed)
         XCTAssertTrue(refused.controller.canCancelPayment, "a definitive refusal: cancellable again")
+        // Closed on the failure screen: `failed` with the error the payer saw, and the order released.
+        let onFailure = await Harness.mobileMoney(answers: "process-processing-mobile-money-sandbox", "status-pending-attempt-refused",
+                                                  "cancel-200")
+        onFailure.controller.submitMobileMoney()
+        await waitUntil("approval") { onFailure.controller.state == .approvalRequired }
+        await onFailure.advance(by: 5)
+        guard case .failed(let seen) = onFailure.controller.screen else { return XCTFail("not failed") }
+        onFailure.controller.close()
+        XCTAssertEqual(onFailure.controller.result, .failed(error: seen, transaction: onFailure.controller.transaction))
+        await waitUntil("released") { onFailure.transport.requests("POST", "/pay/cancel").count == 1 }
+        XCTAssertTrue(onFailure.recorder.cancels.isEmpty, "the cancel is not the result")
+        XCTAssertEqual(onFailure.recorder.events.last, "complete:failed")
+        // Not with cancelOnDismiss off, nor when the payment has ended.
+        let kept = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
+        kept.transport.answer("process-failed-402")
+        let keptSheet = await kept.start { $0.cancelOnDismiss = false }
+        keptSheet.setPhone("670000000")
+        keptSheet.submitMobileMoney()
+        await waitUntil("declined") { keptSheet.state == .failed }
+        keptSheet.dismiss()
+        XCTAssertEqual(keptSheet.result?.status, "failed")
+        let paymentEnded = await Harness.mobileMoney(answers: "process-processing-mobile-money-sandbox")
+        paymentEnded.transport.on("GET", "/pay/status", .json(200, ["transaction": ["reference": "trx", "status": "failed"]]))
+        paymentEnded.controller.submitMobileMoney()
+        await waitUntil("approval") { paymentEnded.controller.state == .approvalRequired }
+        await paymentEnded.advance(by: 5)
+        XCTAssertEqual(paymentEnded.controller.state, .failed)
+        paymentEnded.controller.dismiss()
+        XCTAssertEqual(paymentEnded.controller.result?.status, "failed")
+        await settle()
+        XCTAssertTrue(kept.transport.requests("POST", "/pay/cancel").isEmpty)
+        XCTAssertTrue(paymentEnded.transport.requests("POST", "/pay/cancel").isEmpty)
+        // Back on the form after "Try again": a dismiss before any attempt.
         refused.controller.tryAgain()
         XCTAssertEqual(refused.controller.state, .collectingDetails)
         XCTAssertTrue(refused.controller.canCancelPayment)

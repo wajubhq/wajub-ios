@@ -189,6 +189,11 @@ extension CheckoutController {
         // A cancel is on its way: its answer settles the sheet.
         guard cancelTask == nil else { return }
         if let settled = settledResult() {
+            // Closing on a failure: the result is that failure, but a payment still cancellable is
+            // released (the cancel is not the result: `onCancel` does not fire).
+            if case .failed = screen, case .failed = settled, options.cancelOnDismiss, mayCancel {
+                releaseOrder()
+            }
             finish(settled)
             return
         }
@@ -210,6 +215,12 @@ extension CheckoutController {
         stopWatching()
         workTask?.cancel()
         runCancel(reason: .dismissed)
+    }
+
+    /// `POST /pay/cancel` sent to its end, its answer left aside: the sheet has settled already.
+    func releaseOrder() {
+        let client = self.client
+        Task { _ = try? await client.send(.cancel) }
     }
 
     /// The Close button of a final screen: the same as a dismiss.
