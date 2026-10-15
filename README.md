@@ -143,7 +143,7 @@ once). A callback that throws is caught and logged; the sheet carries on.
 |---|---|
 | `.complete(payment:transaction:)` | The sheet closed after the success screen |
 | `.processing(transaction:)` | The payer closed the sheet while an attempt was running, or the 15-minute watch ended: money may still move |
-| `.failed(error:transaction:)` | The sheet closed on a failure, an expiry, a load error, or a payment cancelled elsewhere (`payment_cancelled`) |
+| `.failed(error:transaction:)` | The sheet closed on a failure (with the error the payer saw; a payment still cancellable is also released with `POST /pay/cancel` when `cancelOnDismiss` is on, without `onCancel`), an expiry, a load error, or a payment cancelled elsewhere (`payment_cancelled`) |
 | `.cancelled(reason:redirectURL:)` | "Cancel payment" (`.payerCancelled`), a dismiss before any attempt (`.dismissed`), or the presenting screen going away first (`.hostGone`) |
 
 `PaymentSuccess` is Wajub.js's: `id` (Wajub's payment id), `reference` (yours), `amount` (what the
