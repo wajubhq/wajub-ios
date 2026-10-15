@@ -35,7 +35,7 @@ public final class CheckoutController {
     public internal(set) var currentMethod: CheckoutMethod?
     public internal(set) var mobileMoney: MobileMoneyForm?
     public internal(set) var cardForm: CardForm?
-    /// Field errors, keyed by field (`data.phone`, `data.operator`, `email`, `code`…).
+    /// Field errors, keyed by the field at fault (each error's `param`).
     public internal(set) var fieldErrors: [String: WajubError] = [:]
     /// A form-level error not tied to a field.
     public internal(set) var banner: WajubError?
@@ -96,6 +96,8 @@ public final class CheckoutController {
         var clientSession: ClientSession?
         /// `POST /pay/client-session/complete` is on its way.
         var completingClientSession = false
+        /// The payer came back again while it was: one more `/complete` once it answers without a verdict.
+        var completeAgain = false
         /// `/complete` answered without a verdict: the watch decides from then on.
         var clientSessionAnswered = false
         /// A refused try the watch read while `/complete` ran: it stands if `/complete` has no verdict.

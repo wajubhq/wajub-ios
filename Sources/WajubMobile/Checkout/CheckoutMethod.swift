@@ -32,7 +32,7 @@ public struct CheckoutMethod: Equatable, Sendable, Identifiable {
     public var kind: Kind
     /// In the sheet's language.
     public var name: String
-    /// The logo to draw (never an SVG), or `nil`: draw the method's symbol.
+    /// The method's logo URL, often an SVG. `drawableLogo` is the one iOS can draw.
     public var logo: String?
     /// The payment's channels behind it, in order.
     public var channels: [SessionChannel]
@@ -40,6 +40,9 @@ public struct CheckoutMethod: Equatable, Sendable, Identifiable {
     public var limit: AmountLimit?
 
     public var isEnabled: Bool { limit == nil }
+
+    /// The logo iOS can draw (a PNG where Wajub has one, never an SVG), or `nil`: draw the method's symbol.
+    public var drawableLogo: String? { channels.first?.drawableLogo }
 
     /// `mobile_money`, `card` or `wallet`: the `method` of the callbacks.
     public var family: String {
@@ -124,15 +127,15 @@ enum MethodResolver {
             if channel.isMobileMoney {
                 guard channel == mobileMoneyChannels.first else { continue }
                 let limits = mobileMoneyChannels.map { limit($0, amount: amount) }
-                methods.append(CheckoutMethod(id: "mobile_money", kind: .mobileMoney, name: strings.mobileMoney, logo: channel.drawableLogo,
+                methods.append(CheckoutMethod(id: "mobile_money", kind: .mobileMoney, name: strings.mobileMoney, logo: channel.logo,
                                               channels: mobileMoneyChannels,
                                               limit: limits.contains(where: { $0 == nil }) ? nil : limits.first ?? nil))
             } else if channel.type == "card",
                       let flavour = cardFlavour(channel, config: config, sandbox: session.transaction.sandbox, hasCardCollector: hasCardCollector) {
-                methods.append(CheckoutMethod(id: "card", kind: .card(flavour), name: channel.localizedName(language), logo: channel.drawableLogo,
+                methods.append(CheckoutMethod(id: "card", kind: .card(flavour), name: channel.localizedName(language), logo: channel.logo,
                                               channels: [channel], limit: limit(channel, amount: amount)))
             } else {
-                methods.append(CheckoutMethod(id: channel.slug, kind: .wallet, name: channel.localizedName(language), logo: channel.drawableLogo,
+                methods.append(CheckoutMethod(id: channel.slug, kind: .wallet, name: channel.localizedName(language), logo: channel.logo,
                                               channels: [channel], limit: limit(channel, amount: amount)))
             }
         }

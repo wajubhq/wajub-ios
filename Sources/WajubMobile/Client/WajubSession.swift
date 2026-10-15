@@ -102,9 +102,23 @@ public final class WajubSession: @unchecked Sendable {
     }
 
     /// Answers a confirmation step: its id and fields (`code`, `pin`, `phone`, `birthday`, or the address fields).
+    /// `verifyStep(_:id:fields:)` also says what the payment does next.
     public func verify(_ kind: ConfirmStepKind, id: String, fields: [String: String]) async throws -> StepVerifyResponse {
+        try await verifyStep(kind, id: id, fields: fields).response
+    }
+
+    /// Answers a confirmation step, and says what the payment does next: another step the provider
+    /// asks for (a code after a date of birth, its page after a PIN), paid, or still under way.
+    public func verifyStep(_ kind: ConfirmStepKind, id: String, fields: [String: String]) async throws -> StepAnswer {
         let answer = try await call(.verify(kind), phase: .payment, body: WajubSession.verifyBody(kind, id: id, fields: fields))
-        return StepVerifyResponse(json: answer.body ?? .null)
+        let response = StepVerifyResponse(json: answer.body ?? .null)
+        guard case .success(let transaction) = response else { return StepAnswer(response: response, next: nil) }
+        if transaction?.status == .failed, answer.body?["action"]?.nonEmptyString == nil {
+            return StepAnswer(response: response,
+                              next: .failed(error: .catalogue(WajubError.Code.paymentFailed, language), transaction: transaction))
+        }
+        let next = ProcessOutcome(PaymentAnswer.classify(answer, mobileMoney: false, allowsClientSession: false), language: language)
+        return StepAnswer(response: response, next: next)
     }
 
     /// Asks for a new code for a confirmation step.

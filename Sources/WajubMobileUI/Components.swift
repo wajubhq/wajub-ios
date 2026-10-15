@@ -155,7 +155,7 @@ struct OperatorLogo: View {
 
     var body: some View {
         Group {
-            if let url = choice.logoURL.flatMap(URL.init(string:)) {
+            if let url = choice.drawableLogoURL.flatMap(URL.init(string:)) {
                 AsyncImage(url: url) { phase in
                     if let image = phase.image {
                         image.resizable().scaledToFit()
@@ -181,7 +181,7 @@ struct MethodLogo: View {
 
     var body: some View {
         Group {
-            if let url = method.logo.flatMap(URL.init(string:)), url.scheme == "https" {
+            if let url = method.drawableLogo.flatMap(URL.init(string:)), url.scheme == "https" {
                 AsyncImage(url: url) { phase in
                     if let image = phase.image {
                         image.resizable().scaledToFit()

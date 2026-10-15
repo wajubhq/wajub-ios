@@ -5,6 +5,10 @@
 - Card payments whose provider asks for several confirmation steps in a row (a date of birth then a
   code, a PIN then the bank's page) go through each step in the sheet.
 - Channel and operator logos show as images where Wajub has them; the others keep their brand badge.
+  For your own screens, `CheckoutMethod.drawableLogo` and `OperatorChoice.drawableLogoURL` give the
+  logo iOS can draw; `logo` and `logoURL` are unchanged.
+- `WajubSession.verifyStep(_:id:fields:)` answers a confirmation step and says what follows it,
+  another step included, for apps that draw their own screens.
 - Benin numbers have ten digits, their leading 0 kept, and MTN and Moov are recognised from the
   number; an 8-digit number from before the change is read with `01` in front.
 - `PresentOptions.realtime` and `RealtimeOptions` are deprecated: the payment's live updates need no

@@ -5,7 +5,7 @@ public struct SdkChannelConfig: Equatable, Sendable {
     public var available: Bool
     /// The payment provider expected to charge; `ClientSession.provider` says which one did.
     public var provider: String?
-    /// How the payment details are collected (`form`, `stripe_elements`, `hosted_redirect`, …).
+    /// How the payment details are collected; the sheet reads it, your app does not need it.
     public var sdk: String?
     public var publishableKey: String?
     public var requiredFields: [String]
@@ -34,8 +34,8 @@ public struct SdkChannelConfig: Equatable, Sendable {
 
 /// How each payment method of the payment is collected.
 public struct SdkConfigResponse: Equatable, Sendable {
-    /// Keyed by channel slug, an aggregate (`cm.mobile`) and its operators (`cm.mtn`) included. The
-    /// payment's own channels decide what is offered.
+    /// Keyed by the slug of a channel (`SessionChannel.slug`) or of one of its operators
+    /// (`ChannelOperator.slug`). The payment's own channels decide what is offered.
     public var channels: [String: SdkChannelConfig]
 
     public init(json: JSONValue) {
@@ -202,7 +202,7 @@ public struct ProcessResponse: Equatable, Sendable {
 public enum ConfirmStepKind: String, CaseIterable, Sendable {
     case otp, pin, phone, birthday, address
 
-    /// The name of the step's id in a payment answer (`otp_id`, `pin_id`, …).
+    /// Where the step's id is read from in a payment answer; your app does not need it.
     public var idKey: String { "\(rawValue)_id" }
 
     var action: ProcessAction { ProcessAction(rawValue: "confirm_\(rawValue)") }
@@ -230,6 +230,20 @@ public enum StepVerifyResponse: Equatable, Sendable {
         } else {
             self = .success(transaction: SessionTransaction.optional(json["transaction"]))
         }
+    }
+}
+
+/// A confirmation step's answer and what follows it (`WajubSession.verifyStep(_:id:fields:)`).
+public struct StepAnswer: Equatable, Sendable {
+    /// Accepted, or refused with a code.
+    public var response: StepVerifyResponse
+    /// When accepted, what the payment does next: `.requiresAction` for another step or a page,
+    /// `.complete` once paid, `.processing` while it runs, `.failed` when it failed. `nil` when refused.
+    public var next: ProcessOutcome?
+
+    public init(response: StepVerifyResponse, next: ProcessOutcome?) {
+        self.response = response
+        self.next = next
     }
 }
 

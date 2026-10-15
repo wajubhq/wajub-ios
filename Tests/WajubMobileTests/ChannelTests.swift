@@ -104,8 +104,11 @@ final class ChannelTests: XCTestCase {
         // The PNG when the API has one; an SVG alone is not drawn (the brand badge or symbol instead).
         let session = Fixtures.session("session-cm-aggregate")
         let methods = MethodResolver.methods(session, config: Fixtures.config("sdk-config-cm-stripe"), language: .en, hasCardCollector: true)
-        XCTAssertEqual(methods.first { $0.id == "mobile_money" }?.logo, "https://api.wajub.com/img/channels/momo.png")
-        XCTAssertNil(methods.first { $0.id == "card" }?.logo, "logo_png null and an SVG logo")
+        XCTAssertEqual(methods.first { $0.id == "mobile_money" }?.drawableLogo, "https://api.wajub.com/img/channels/momo.png")
+        XCTAssertNil(methods.first { $0.id == "card" }?.drawableLogo, "logo_png null and an SVG logo")
+        // `logo` keeps the channel's own logo, as in 1.0.0.
+        XCTAssertEqual(methods.first { $0.id == "mobile_money" }?.logo, "https://assets.wajub.com/img/channels/momo.svg")
+        XCTAssertEqual(methods.first { $0.id == "card" }?.logo, "https://assets.wajub.com/img/channels/card.svg")
         let aggregate = session.channels.first { $0.slug == "cm.mobile" }!
         XCTAssertEqual(aggregate.operators.map(\.logoPNG), ["https://api.wajub.com/img/channels/momo.png",
                                                              "https://api.wajub.com/img/channels/om.png"])
@@ -117,7 +120,8 @@ final class ChannelTests: XCTestCase {
         let choices = MobileMoneyForm.choices(channels: ivorian.channels, country: "CI", config: Fixtures.config("sdk-config-ci-wallets"),
                                               language: .en, amount: 10000)
         XCTAssertFalse(choices.isEmpty)
-        XCTAssertTrue(choices.allSatisfy { $0.logoURL == nil }, "SVG logos only: the brand badges")
+        XCTAssertTrue(choices.allSatisfy { $0.drawableLogoURL == nil }, "SVG logos only: the brand badges")
+        XCTAssertEqual(choices.first { $0.id == "mtn" }?.logoURL, "https://assets.wajub.com/img/channels/ci-mtn.svg", "as in 1.0.0")
 
         XCTAssertEqual(ChannelLogo.drawable(logo: "https://cdn.example/a.svg", png: "https://cdn.example/a.png"), "https://cdn.example/a.png")
         XCTAssertNil(ChannelLogo.drawable(logo: "https://cdn.example/a.SVG?v=2", png: nil))

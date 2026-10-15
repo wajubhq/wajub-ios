@@ -109,8 +109,8 @@ public struct SessionTransaction: Equatable, Sendable {
     /// A refused try's code, when the payment carries one.
     public var errorCode: String?
     /// The answer has the `error_code` key (even `null`): an older API leaves it out, and then whether
-    /// the payment carries a refusal is unknown.
-    var hasErrorCodeKey = false
+    /// the payment carries a refusal is unknown. Not part of the transaction's equality.
+    @EqualityIgnored var hasErrorCodeKey = false
 
     public init(json: JSONValue) throws {
         guard let amount = json["amount"]?.double else { throw WireDecodingError(field: "transaction.amount") }
@@ -180,7 +180,7 @@ public struct SessionChannel: Equatable, Sendable {
     public var name: String
     /// The name in French.
     public var nameFr: String?
-    /// `mobile_money`, `mobile`, `card`, `wallet`, …
+    /// The kind of payment method: Mobile Money (`isMobileMoney`), card or wallet.
     public var type: String
     /// Mostly an SVG, which iOS does not draw.
     public var logo: String?
@@ -319,7 +319,7 @@ public struct Branding: Equatable, Sendable {
 public struct EchoConfig: Equatable, Sendable {
     /// `nil` when live updates are not available.
     public var key: String?
-    /// The host, scheme included.
+    /// Used by the sheet for the live updates; your app does not need it.
     public var wsHost: String?
     public var wsPort: Int?
     public var channelPrefix: String
@@ -436,4 +436,12 @@ enum ChannelLogo {
         let path = (URL(string: url)?.path ?? url).lowercased()
         return path.hasSuffix(".svg") || path.hasSuffix(".svgz")
     }
+}
+
+/// A stored value left out of its owner's synthesized equality.
+@propertyWrapper
+struct EqualityIgnored<Value: Sendable>: Equatable, Sendable {
+    var wrappedValue: Value
+
+    static func == (lhs: EqualityIgnored, rhs: EqualityIgnored) -> Bool { true }
 }

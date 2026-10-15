@@ -205,7 +205,7 @@ options.appearance = Appearance(
 ```
 
 - The `"none"` preset is `.noPreset` for `theme`, and no shadow is `.noShadow` for `shadow`.
-- `Appearance(json:)` reads the same object as JSON, to share one style with your web checkout.
+- `Appearance(json:)` reads an appearance object from JSON.
 - `inherit: true` takes the presenting screen's tint, colours and light or dark style.
 - What you set wins. The merchant's branding from the Dashboard fills what you leave unset: logo,
   business name, colours, radius and font. A white-label merchant hides "Secured by Wajub".

@@ -394,7 +394,12 @@ extension CheckoutController {
     /// decides over a refused try the watch reads meanwhile; without a verdict (still processing, or no
     /// answer), that refused try stands, and the watch decides from then on.
     func completeClientSession(_ session: ClientSession) {
-        guard attempt?.completingClientSession == false else { return }
+        guard attempt?.completingClientSession == false else {
+            // Back again (from the page reopened meanwhile): asked once the call on its way has answered.
+            attempt?.completeAgain = true
+            return
+        }
+        attempt?.completeAgain = false
         attempt?.completingClientSession = true
         attempt?.clientSessionAnswered = false
         attempt?.heldRefusal = nil
@@ -442,6 +447,11 @@ extension CheckoutController {
     /// `/complete` gave no verdict: a refused try read meanwhile stands, else the watch looks at once.
     func clientSessionUndecided() {
         attempt?.completingClientSession = false
+        if attempt?.completeAgain == true, let session = attempt?.clientSession, !(isBrowserOpen && browserInApp) {
+            // The payer came back again meanwhile: the provider's verdict is asked once more.
+            completeClientSession(session)
+            return
+        }
         attempt?.clientSessionAnswered = true
         if let held = attempt?.heldRefusal {
             attempt?.heldRefusal = nil

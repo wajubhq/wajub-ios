@@ -102,6 +102,36 @@ final class ConfirmationTests: XCTestCase {
         XCTAssertEqual(redirect.controller.state, .pending)
         redirect.controller.hostGone()
 
+        // The lower-level client says what follows the step: the next one, a page, or the payment.
+        let low = Harness(session: "session-cm-aggregate")
+        low.transport.answer("birthday-verify-chained-otp")
+        let toOTP = try await low.client.verifyStep(.birthday, id: "prc_7hQm2LxV9pR4sT1wYb3N", fields: ["birthday": "1990-04-21"])
+        guard case .success = toOTP.response, case .requiresAction(let nextStep)? = toOTP.next else { return XCTFail("no next step") }
+        XCTAssertEqual(nextStep.action, .confirmOTP)
+        XCTAssertEqual(nextStep.stepId, body["otp_id"]?.string)
+        XCTAssertEqual(nextStep.hint, body["otp_masked_contact"]?.string)
+        low.transport.answer("pin-verify-chained-redirect")
+        let toPage = try await low.client.verifyStep(.pin, id: "prc_7hQm2LxV9pR4sT1wYb3N", fields: ["pin": "1234"])
+        guard case .requiresAction(let page)? = toPage.next else { return XCTFail("no page") }
+        XCTAssertEqual(page.url, url)
+        low.transport.answer("otp-verify-success")
+        let paidStep = try await low.client.verifyStep(.otp, id: "prc_7hQm2LxV9pR4sT1wYb3N", fields: ["code": "123456"])
+        guard case .complete(let paidTransaction)? = paidStep.next else { return XCTFail("not paid") }
+        XCTAssertEqual(paidTransaction.status, .succeeded)
+        low.transport.answer("pin-verify-success")
+        guard case .processing? = try await low.client.verifyStep(.pin, id: "prc_7hQm2LxV9pR4sT1wYb3N", fields: ["pin": "1234"]).next else {
+            return XCTFail("not processing")
+        }
+        low.transport.answer("otp-verify-invalid")
+        let refused = try await low.client.verifyStep(.otp, id: "prc_7hQm2LxV9pR4sT1wYb3N", fields: ["code": "000000"])
+        guard case .failed(let code, _, _) = refused.response else { return XCTFail("not refused") }
+        XCTAssertEqual(code, "invalid_otp")
+        XCTAssertNil(refused.next)
+        // verify(_:id:fields:) is unchanged.
+        low.transport.answer("birthday-verify-chained-otp")
+        let plain = try await low.client.verify(.birthday, id: "prc_7hQm2LxV9pR4sT1wYb3N", fields: ["birthday": "1990-04-21"])
+        XCTAssertEqual(plain, toOTP.response)
+
         // An action the sheet cannot perform: FAILED unsupported_action.
         let unknown = await stepHarness("process-requires-birthday")
         unknown.transport.on("POST", "/pay/birthday/verify", .json(200, Fixtures.body("birthday-verify-chained-otp").setting(["action"], to: "confirm_magic")))

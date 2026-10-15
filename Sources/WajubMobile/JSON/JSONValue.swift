@@ -2,7 +2,7 @@ import Foundation
 
 /// A JSON value, read leniently: unknown keys are ignored, every key may be missing, a number may
 /// arrive as an integer, a decimal or a numeric string, a boolean as `true`/`false`, `0`/`1` or
-/// `"true"`/`"false"`, and keys containing a dot (`"name.fr"`) are literal keys.
+/// `"true"`/`"false"`, and a key containing a dot is one key.
 public enum JSONValue: Equatable, Sendable {
     case null
     case bool(Bool)
@@ -21,7 +21,7 @@ public enum JSONValue: Equatable, Sendable {
         try parse(Data(text.utf8))
     }
 
-    /// The value under `key` when this is an object. The key is literal: `"name.fr"` is one key.
+    /// The value under `key` when this is an object. A key containing a dot is one key, not a path.
     public subscript(key: String) -> JSONValue? {
         if case .object(let object) = self { return object[key] }
         return nil

@@ -95,6 +95,7 @@ final class LoadingTests: XCTestCase {
         let unknown = await older.start()
         XCTAssertNil(unknown.session?.transaction.errorCode)
         XCTAssertEqual(unknown.session?.transaction.hasErrorCodeKey, false)
+        XCTAssertEqual(unknown.session?.transaction, known.session?.transaction, "the key's presence is not part of the equality")
         unknown.setPhone("670000000")
         unknown.submitMobileMoney()
         await older.drive(until: "pending") { unknown.state == .pending }

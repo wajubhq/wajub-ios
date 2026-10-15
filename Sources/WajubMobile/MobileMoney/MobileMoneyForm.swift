@@ -6,8 +6,11 @@ public struct OperatorChoice: Equatable, Sendable, Identifiable {
     public var id: String
     /// The operator's name to show.
     public var label: String
-    /// An `https` logo iOS can draw (never an SVG); when it is missing or fails to load, draw `badge`.
+    /// The operator's `https` logo, often an SVG. `drawableLogoURL` is the one iOS can draw.
     public var logoURL: String?
+    /// An `https` logo iOS can draw (a PNG where Wajub has one, never an SVG); when it is missing or
+    /// fails to load, draw `badge`.
+    public var drawableLogoURL: String?
     public var badge: OperatorBadge
     /// The channel the payment goes through: the aggregate's slug for an aggregate member.
     public var channelSlug: String
@@ -199,7 +202,8 @@ public struct MobileMoneyForm: Equatable, Sendable {
             where !choices.contains(where: { $0.id == member.id }) {
                 let label = data.operators[member.id]?.brand?.label ?? member.name
                 choices.append(OperatorChoice(
-                    id: member.id, label: label, logoURL: member.logo,
+                    id: member.id, label: label, logoURL: member.logo.flatMap { $0.lowercased().hasPrefix("https://") ? $0 : nil },
+                    drawableLogoURL: member.drawableLogo,
                     badge: data.badge(operatorId: member.id, fallbackName: member.name), channelSlug: channel.slug,
                     operatorSlug: member.slug, isAggregateMember: channel.isAggregate,
                     isOperatorIndependent: data.operatorIndependentWallets.contains(member.id), limit: limit))
@@ -211,13 +215,14 @@ public struct MobileMoneyForm: Equatable, Sendable {
     /// The operators of a Mobile Money channel that sdk-config does not mark unavailable.
     /// Aggregate members are named in the session's locale; another channel by its name for the sheet's language.
     static func availableOperators(_ channel: SessionChannel, config: SdkConfigResponse?,
-                                   language: WajubLanguage = .en) -> [(id: String, name: String, logo: String?, slug: String)] {
-        let members: [(id: String, name: String, logo: String?, slug: String)]
+                                   language: WajubLanguage = .en)
+        -> [(id: String, name: String, logo: String?, drawableLogo: String?, slug: String)] {
+        let members: [(id: String, name: String, logo: String?, drawableLogo: String?, slug: String)]
         if channel.isAggregate {
-            members = channel.operators.map { ($0.operatorId, $0.name, $0.drawableLogo, $0.slug) }
+            members = channel.operators.map { ($0.operatorId, $0.name, $0.logo, $0.drawableLogo, $0.slug) }
         } else {
             let id = channel.slug.split(separator: ".").last.map(String.init) ?? channel.slug
-            members = [(id, channel.localizedName(language), channel.drawableLogo, channel.slug)]
+            members = [(id, channel.localizedName(language), channel.logo, channel.drawableLogo, channel.slug)]
         }
         return members.filter { MethodResolver.mobileMoneyConfig(channel, operatorSlug: channel.isAggregate ? $0.slug : nil, config: config).available }
     }
