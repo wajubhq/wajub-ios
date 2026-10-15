@@ -16,6 +16,8 @@
 - In a sandbox payment, Wajub's Mobile Money test numbers are accepted, paid through the operator
   they test, and sent as read. `MobileMoneyData.sandboxTestNumber(_:country:)` and the `sandbox:`
   variants of `isValid`, `detectOperator` and `e164` do the same for your own screens.
+- Digits typed on an Arabic, Persian or other non-Latin keyboard are read as the same digits in
+  the Mobile Money number, the confirmation codes and the card fields, instead of being dropped.
 - `MobileMoneyData.nationalDigits(_:country:)` now keeps the 0 where it is part of the number, and
   `Country.keepsTrunkZero` is deprecated: to send a number, use `e164(_:country:)`.
 - `PresentOptions.realtime` and `RealtimeOptions` are deprecated: the payment's live updates need no

@@ -118,11 +118,11 @@ public struct CardForm: Equatable, Sendable {
         return errors
     }
 
-    /// The values to send, trimmed (the country upper-cased).
+    /// The values to send, trimmed, with ASCII digits (the country upper-cased).
     var payload: [String: String] {
         var payload: [String: String] = [:]
         for field in fields {
-            let value = (values[field] ?? "").trimmingCharacters(in: .whitespaces)
+            let value = Digits.ascii(values[field] ?? "").trimmingCharacters(in: .whitespaces)
             guard !value.isEmpty else { continue }
             payload[field] = field == "country" ? value.uppercased() : value
         }

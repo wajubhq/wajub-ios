@@ -167,9 +167,10 @@ public struct MobileMoneyData: Sendable {
 
     // MARK: Numbers
 
-    /// Keeps the digits, dropping spaces, dashes and `+`.
+    /// Keeps the digits, dropping spaces, dashes and `+`. Digits typed on an Arabic, Persian or other
+    /// keyboard are read as the same digits.
     public func sanitize(_ input: String) -> String {
-        String(input.unicodeScalars.filter { ("0"..."9").contains($0) }.map(Character.init))
+        String(Digits.ascii(input).unicodeScalars.filter { ("0"..."9").contains($0) }.map(Character.init))
     }
 
     /// The digits after the dial code, exactly as typed.

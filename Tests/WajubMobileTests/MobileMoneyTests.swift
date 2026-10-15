@@ -349,6 +349,54 @@ final class MobileMoneyTests: XCTestCase {
         liveController.hostGone()
     }
 
+    /// Digits typed on an Arabic, Persian or full-width keyboard are read as ASCII digits, in the number,
+    /// the confirmation steps and the card fields.
+    @MainActor func test_readsDigitsOfOtherKeyboardsAsASCII() async throws {
+        for typed in ["٦٧٧ ١٢ ٣٤ ٥٦", "۶۷۷۱۲۳۴۵۶", "６７７１２３４５６", "+٢٣٧ 677 12 34 56"] {
+            XCTAssertEqual(data.sanitize(typed), typed.hasPrefix("+") ? "237677123456" : "677123456", typed)
+            XCTAssertTrue(data.isValid(typed, country: "CM"), typed)
+            XCTAssertEqual(data.detectOperator(typed, country: "CM"), "mtn", typed)
+            XCTAssertEqual(data.e164(typed, country: "CM"), "+237677123456", typed)
+        }
+        XCTAssertEqual(data.sanitize("½ Ⅳ ²"), "", "numbers that are not decimal digits are dropped")
+        XCTAssertEqual(data.sandboxTestNumber("٦٨٠٠٠٠٠٠٠", country: "CM")?.e164, "+237680000000")
+
+        // The sheet: the field shows the digits, and Pay sends them in ASCII.
+        let harness = await Harness.mobileMoney(answers: "process-processing-mobile-money-sandbox")
+        harness.controller.setPhone("٦٧٠ ٠٠ ٠٠ ٠٠")
+        XCTAssertEqual(harness.controller.mobileMoney?.phone, "670000000")
+        XCTAssertEqual(harness.controller.mobileMoney?.formattedPhone, "67 00 00 00 0")
+        harness.controller.submitMobileMoney()
+        await waitUntil("sent") { harness.processBodies().count == 1 }
+        XCTAssertEqual(harness.processBodies()[0]["data"]?["phone"]?.string, "+237670000000")
+        harness.controller.hostGone()
+
+        // A confirmation step's code, in ASCII; a number that is not a decimal digit is refused.
+        let step = Harness(session: "session-cm-aggregate", config: "sdk-config-card-kkiapay")
+        step.transport.answer("process-requires-otp", "status-processing", "pin-verify-success")
+        let controller = await step.start()
+        controller.selectMethod("card")
+        controller.submitCard()
+        await waitUntil("otp") { controller.state == .otpRequired }
+        controller.submitStep(["code": "Ⅳ２３４５６"])
+        XCTAssertNotNil(controller.fieldErrors["code"])
+        XCTAssertTrue(step.transport.requests("POST", "/pay/otp/verify").isEmpty)
+        step.transport.on("POST", "/pay/otp/verify", .fixture("pin-verify-success"))
+        controller.submitStep(["code": "١٢٣٤٥٦"])
+        await waitUntil("verified") { !step.transport.requests("POST", "/pay/otp/verify").isEmpty }
+        XCTAssertEqual(step.transport.requests("POST", "/pay/otp/verify")[0].json?["code"]?.string, "123456")
+        controller.hostGone()
+
+        // The card fields, in ASCII.
+        var card = CardForm(flavour: .sandboxForm, customer: nil)
+        card.values = ["card.number": "٤٢٤٢ ٤٢٤٢ ٤٢٤٢ ٤٢٤٢", "card_holder": "Awa Ngono", "expiry_month": "١٢",
+                       "expiry_year": "۲۰۳۰", "cvv": "١٢٣"]
+        XCTAssertEqual(card.payload["card.number"], "4242 4242 4242 4242")
+        XCTAssertEqual(card.payload["expiry_year"], "2030")
+        XCTAssertEqual(card.payload["cvv"], "123")
+        XCTAssertEqual(card.payload["card_holder"], "Awa Ngono")
+    }
+
     private func makeForm(_ session: String, config: String? = nil) -> MobileMoneyForm {
         let session = Fixtures.session(session)
         return MobileMoneyForm(channels: session.channels.filter(\.isMobileMoney), config: config.map(Fixtures.config),
