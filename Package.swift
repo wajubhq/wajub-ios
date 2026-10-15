@@ -13,7 +13,11 @@ let package = Package(
     targets: [
         .target(
             name: "WajubMobile",
-            resources: [.copy("Resources/mobile-money.json")]
+            resources: [
+                .copy("Resources/mobile-money.json"),
+                // What the SDK collects and the required-reason APIs it uses, for the app's privacy report.
+                .copy("PrivacyInfo.xcprivacy"),
+            ]
         ),
         .target(
             name: "WajubMobileUI",

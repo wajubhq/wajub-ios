@@ -41,6 +41,13 @@ final class AppearanceTests: XCTestCase {
         XCTAssertEqual(theme.shape.fontFamilies, ["Poppins"])
         XCTAssertEqual(theme.tokens.text.hex, "#101010")
 
+        // Wajub.js's "none" reads as the cases named so they can't pass for Optional.none.
+        let none = Appearance(json: ["theme": "none", "shadow": "none"])
+        XCTAssertEqual(none.theme, .noPreset)
+        XCTAssertEqual(none.shadow, .noShadow)
+        XCTAssertEqual(AppearanceTheme.noPreset.rawValue, "none")
+        XCTAssertEqual(AppearanceShadow.noShadow.rawValue, "none")
+
         // Values that do not parse are ignored, never an error.
         let junk = Appearance(json: ["theme": "neon", "colorScheme": "sepia", "shadow": "huge", "labels": "inside",
                                      "primaryColor": "red", "borderRadius": "-4px",
@@ -190,9 +197,9 @@ final class AppearanceTests: XCTestCase {
         let night = Appearance.preset(.night)
         XCTAssertEqual(night, Appearance(colorScheme: .dark, primaryColor: "#7c3aed", backgroundColor: "#0f172a", borderRadius: "8px",
                                          buttonTextColor: "#f8fafc", inputBackgroundColor: "#1e293b", inputBorderColor: "#334155",
-                                         textMutedColor: "#94a3b8", shadow: AppearanceShadow.none))
-        XCTAssertEqual(Appearance.preset(.flat), Appearance(borderRadius: "0", shadow: AppearanceShadow.none))
-        XCTAssertEqual(Appearance.preset(.none), Appearance())
+                                         textMutedColor: "#94a3b8", shadow: .noShadow))
+        XCTAssertEqual(Appearance.preset(.flat), Appearance(borderRadius: "0", shadow: .noShadow))
+        XCTAssertEqual(Appearance.preset(.noPreset), Appearance())
         XCTAssertNil(Appearance.preset(.dark))
 
         let resolved = ThemeResolver.resolve(appearance: Appearance(theme: .night), branding: plain, system: .light)
@@ -202,7 +209,7 @@ final class AppearanceTests: XCTestCase {
         XCTAssertEqual(resolved.tokens.onPrimary.hex, "#F8FAFC")
         XCTAssertEqual(resolved.tokens.inputBackground.hex, "#1E293B")
         XCTAssertEqual(resolved.tokens.textSecondary.hex, "#94A3B8")
-        XCTAssertEqual(resolved.shadow, AppearanceShadow.none)
+        XCTAssertEqual(resolved.shadow, .noShadow)
         XCTAssertEqual(ThemeResolver.resolve(appearance: Appearance(theme: .flat), branding: merchant, system: .light).shape.radius, 0)
         // The stripe stack starts with the system font: the platform's font, not Inter.
         XCTAssertEqual(ThemeResolver.resolve(appearance: Appearance(theme: .stripe), branding: nil, system: .light).shape.fontFamilies, [])

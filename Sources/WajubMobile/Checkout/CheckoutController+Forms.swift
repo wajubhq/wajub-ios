@@ -161,11 +161,23 @@ extension CheckoutController {
                 self.isCollectingCard = false
                 guard self.isCurrent(attempt.key), case .form = self.screen else { return }
                 self.attempt = nil
-                self.banner = (error as? WajubError)
-                    ?? WajubError(type: .paymentError, code: "card_collection_failed", message: error.localizedDescription, retryable: true)
+                self.banner = (error as? WajubError) ?? Self.cardCollectionError(error, language: self.language)
                 self.update()
             }
         }
+    }
+
+    /// A collector's own error, on the card form: `validation_error`, with the error's description when
+    /// it has one for the payer (Stripe's errors do), else the catalogue's; its text kept in `apiMessage`.
+    static func cardCollectionError(_ error: Error, language: WajubLanguage) -> WajubError {
+        var banner = WajubError.catalogue(WajubError.Code.validationError, language)
+        let described = (error as? LocalizedError)?.errorDescription
+            ?? ((error as NSError).userInfo[NSLocalizedDescriptionKey] as? String)
+        if let described = described?.trimmingCharacters(in: .whitespacesAndNewlines), !described.isEmpty {
+            banner.message = described
+        }
+        banner.apiMessage = String(describing: error)
+        return banner
     }
 
     func startClientSession(fields: [String: String], securityRetry: Bool = false) {

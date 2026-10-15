@@ -2,7 +2,10 @@ import Foundation
 
 /// `theme`: a colour scheme (`light`, `dark`, `auto`, `system`) or one of Wajub.js's presets.
 public enum AppearanceTheme: String, Sendable, CaseIterable {
-    case light, dark, auto, system, stripe, night, flat, none
+    case light, dark, auto, system, stripe, night, flat
+    /// Wajub.js's `"none"` preset: no preset values, only your own. Named so that `theme: .noPreset`
+    /// can't be read as `Optional.none`.
+    case noPreset = "none"
 }
 
 /// `colorScheme`.
@@ -12,7 +15,9 @@ public enum AppearanceColorScheme: String, Sendable, CaseIterable {
 
 /// `shadow`: the sheet's elevation.
 public enum AppearanceShadow: String, Sendable, CaseIterable {
-    case none, low, high
+    /// Wajub.js's `"none"`: no elevation. Named so that `shadow: .noShadow` can't be read as `Optional.none`.
+    case noShadow = "none"
+    case low, high
 }
 
 /// `labels`.
@@ -162,10 +167,10 @@ public struct Appearance: Equatable, Sendable {
         case .night:
             return Appearance(colorScheme: .dark, primaryColor: "#7c3aed", backgroundColor: "#0f172a", borderRadius: "8px",
                               buttonTextColor: "#f8fafc", inputBackgroundColor: "#1e293b", inputBorderColor: "#334155",
-                              textMutedColor: "#94a3b8", shadow: AppearanceShadow.none)
+                              textMutedColor: "#94a3b8", shadow: .noShadow)
         case .flat:
-            return Appearance(borderRadius: "0", shadow: AppearanceShadow.none)
-        case .none:
+            return Appearance(borderRadius: "0", shadow: .noShadow)
+        case .noPreset:
             return Appearance()
         case .light, .dark, .auto, .system:
             return nil

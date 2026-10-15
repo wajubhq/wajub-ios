@@ -199,6 +199,58 @@ final class ChannelTests: XCTestCase {
         openController.hostGone()
     }
 
+    /// CD-01 picks the card flavour
+    @MainActor func test_CD_01_showsACollectorErrorOnTheCardForm() async throws {
+        // A collector's own error is a catalogue code on the card form, not a code of its own.
+        let harness = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
+        let collector = HeldCollector()
+        harness.collector = collector
+        let controller = await harness.start()
+        controller.selectMethod("card")
+        let catalogue = WajubError.catalogue(WajubError.Code.validationError, controller.language)
+
+        // Stripe's errors are NSErrors with a description for the payer: shown as it is.
+        controller.submitCard()
+        await waitUntil("collecting") { collector.pending != nil }
+        collector.fail(NSError(domain: "com.stripe.lib", code: 70,
+                               userInfo: [NSLocalizedDescriptionKey: "Your card's security code is incorrect."]))
+        await waitUntil("shown") { controller.banner != nil }
+        var banner = try XCTUnwrap(controller.banner)
+        XCTAssertEqual(banner.code, WajubError.Code.validationError)
+        XCTAssertEqual(banner.type, catalogue.type)
+        XCTAssertTrue(banner.retryable)
+        XCTAssertEqual(banner.message, "Your card's security code is incorrect.")
+        XCTAssertEqual(controller.state, .collectingDetails, "back on the card form")
+        XCTAssertFalse(controller.isCollectingCard)
+
+        // An error without one: the catalogue's message, the error's text kept for the logs.
+        struct Opaque: Error {}
+        controller.submitCard()
+        await waitUntil("collecting again") { collector.pending != nil }
+        collector.fail(Opaque())
+        await waitUntil("shown again") { controller.banner != nil }
+        banner = try XCTUnwrap(controller.banner)
+        XCTAssertEqual(banner.code, WajubError.Code.validationError)
+        XCTAssertEqual(banner.message, catalogue.message)
+        XCTAssertEqual(banner.apiMessage, "Opaque()")
+
+        // A WajubError is shown as it is.
+        controller.submitCard()
+        await waitUntil("collecting a third time") { collector.pending != nil }
+        collector.fail(WajubError.catalogue(WajubError.Code.networkError, controller.language))
+        await waitUntil("shown a third time") { controller.banner != nil }
+        XCTAssertEqual(controller.banner?.code, WajubError.Code.networkError)
+
+        XCTAssertTrue(harness.processBodies().isEmpty, "nothing was sent")
+        XCTAssertTrue(harness.recorder.errors.isEmpty, "a form error, like field validation")
+
+        // A LocalizedError's description, in either language.
+        struct Described: LocalizedError { var errorDescription: String? { "Carte refusée par Stripe." } }
+        XCTAssertEqual(CheckoutController.cardCollectionError(Described(), language: .fr).message, "Carte refusée par Stripe.")
+        XCTAssertEqual(CheckoutController.cardCollectionError(Opaque(), language: .fr).message, "Vérifiez les informations saisies.")
+        controller.hostGone()
+    }
+
     /// CD-03 never sends raw card data in live
     @MainActor func test_CD_03_neverSendsRawCardDataInLive() async {
         // A live session never offers the sandbox test-card form…
@@ -275,14 +327,19 @@ final class ChannelTests: XCTestCase {
 /// A card collector that answers when the test says so.
 @MainActor
 final class HeldCollector: CardCollector {
-    var pending: CheckedContinuation<String?, Never>?
+    var pending: CheckedContinuation<String?, Error>?
 
     func collectPaymentMethod(_ request: CardCollectionRequest) async throws -> String? {
-        await withCheckedContinuation { pending = $0 }
+        try await withCheckedThrowingContinuation { pending = $0 }
     }
 
     func finish(_ paymentMethod: String?) {
         pending?.resume(returning: paymentMethod)
+        pending = nil
+    }
+
+    func fail(_ error: Error) {
+        pending?.resume(throwing: error)
         pending = nil
     }
 }

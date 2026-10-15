@@ -68,6 +68,7 @@ Create the payment on your server (`POST /payments` with your secret key) and ha
 `authorization_token` to the app. Then:
 
 ```swift
+import UIKit
 import WajubMobile
 import WajubMobileUI
 
@@ -202,9 +203,9 @@ native sheet share one style:
 
 ```swift
 options.appearance = Appearance(
-    theme: .stripe,                          // presets: .stripe, .night, .flat, .none
+    theme: .stripe,                          // presets: .stripe, .night, .flat, .noPreset
     colorScheme: .auto,                      // .light, .dark, .auto (follows the phone, live)
-    variables: AppearanceVariables(colorPrimary: "#0F766E", borderRadius: "12px", fontFamily: "Poppins"),
+    variables: AppearanceVariables(colorPrimary: "#0F766E", fontFamily: "Poppins", borderRadius: "12px"),
     buttonTextColor: "#FFFFFF")
 ```
 
@@ -215,7 +216,8 @@ options.appearance = Appearance(
   top-level keys (`primaryColor`, `backgroundColor`, `buttonTextColor`, `inputBackgroundColor`,
   `inputBorderColor`, `textMutedColor`, `secondaryColor`, `successColor`, `errorColor`, `shadow`,
   `labels`, `disableAnimations`). Colours are `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb()` or `rgba()`;
-  lengths `"8px"`, `"8"` or `"0.5rem"`. Values that do not parse are ignored.
+  lengths `"8px"`, `"8"` or `"0.5rem"`. Values that do not parse are ignored. Wajub.js's `"none"`
+  is `.noPreset` for `theme` and `.noShadow` for `shadow`, so neither reads as `Optional.none`.
 - Sharing the web object as JSON: `Appearance(json: try JSONValue.parse(jsonString))`.
 - Precedence, per token: `variables` > top-level keys > the preset > your app's theme (`inherit: true`:
   the presenting screen's tint, background and text colours, kept only when they contrast enough) >
@@ -276,9 +278,75 @@ final class StripeCardCollector: CardCollector {
 options.cardCollector = StripeCardCollector()
 ```
 
-Return `nil` when the payer backs out. A thrown error is shown on the card form.
+Return `nil` when the payer backs out. A `WajubError` you throw is shown on the card form as it is;
+any other error is shown there as `validation_error`, with the error's own description when it has
+one (Stripe's errors do), else "Check the information entered."; its text is kept in `apiMessage`.
 
 ## Your own UI
+
+`WajubMobile` alone runs the whole checkout without drawing anything.
+
+`Checkout.present(_:presenter:browser:)` is `WajubCheckout.present` with your UI. It creates the
+`CheckoutController` (the sheet's state machine) from your options, hands it to your
+`CheckoutPresenting.present(_:)`, starts it, and once the checkout settles calls your
+`dismiss(_:completion:)` and resolves with the `CheckoutResult` (one sheet at a time, like
+`WajubCheckout.present`):
+
+- Your presenter draws the controller's `screen` (and `state`, `methods`, `mobileMoney`, `cardForm`,
+  `fieldErrors`, `banner`…), redraws on `onChange`, and wires your buttons to its actions
+  (`selectMethod`, `setPhone`, `pickOperator`, `submitMobileMoney`, `submitCard`, `payWallet`,
+  `submitStep`, `submitThreeDSCode`, `tryAgain`, `cancelPayment`, `dismiss`,
+  `appWillEnterForeground`, `hostGone`…), then calls `dismiss`'s `completion` once your sheet is
+  gone.
+- Your `BrowserOpening` opens provider pages: `.inApp` in an `SFSafariViewController` (call
+  `onClose` once it is closed), `.external` with `UIApplication.open`.
+- Both callbacks are `@MainActor @Sendable`, so they can go into system completion handlers in a
+  Swift 6 app.
+
+```swift
+import Foundation
+import WajubMobile
+
+@MainActor
+final class MySheet: CheckoutPresenting {
+    private var controller: CheckoutController?
+
+    func present(_ controller: CheckoutController) {
+        self.controller = controller
+        controller.onChange = { [weak self] in self?.render() }
+        // Show your sheet; its buttons call the controller's actions.
+    }
+
+    func dismiss(_ controller: CheckoutController, completion: @escaping @MainActor @Sendable () -> Void) {
+        // Hide your sheet, then:
+        self.controller = nil
+        completion()
+    }
+
+    private func render() {
+        guard let controller else { return }
+        print(controller.state?.rawValue ?? "loading") // draw controller.screen
+    }
+}
+
+@MainActor
+final class MyBrowser: BrowserOpening {
+    func open(_ url: URL, mode: BrowserMode, onClose: @escaping @MainActor @Sendable () -> Void) async -> Bool {
+        // .inApp: present an SFSafariViewController and call onClose() once it is closed.
+        // .external: return await UIApplication.shared.open(url).
+        false // nothing could open the page
+    }
+}
+
+@MainActor
+func payWithMySheet(_ options: PresentOptions) async throws -> CheckoutResult {
+    try await Checkout.present(options, presenter: MySheet(), browser: MyBrowser())
+}
+```
+
+Without `Checkout`, you can also create `CheckoutController(options:browser:)` yourself, set its
+`onChange` and `onFinish` (the `CheckoutResult`, once, when your sheet must close) and call
+`start()`.
 
 - `WajubSession` is the low-level client: `session()`, `sdkConfig()`, `status()`,
   `process(channel:data:idempotencyKey:)`, `startClientSession(…)`, `completeClientSession(id:)`,
@@ -286,17 +354,35 @@ Return `nil` when the payer backs out. A thrown error is shown on the card form.
   `verify3DSCode(threeDSId:code:)`, `broadcastingAuth(socketId:channelName:)`. It sends the
   contract's headers, device signals, timeouts, retries and `Idempotency-Key`, and returns the API's
   shapes and `ProcessOutcome`.
-- `CheckoutController` is the sheet's state machine without any UI: create it with
-  `CheckoutController(options:browser:)` (a `BrowserOpening` of yours, whose `onClose` you call when
-  an in-app browser closes), draw its `screen`, call its
-  actions (`selectMethod`, `setPhone`, `pickOperator`, `submitMobileMoney`, `submitCard`,
-  `payWallet`, `submitStep`, `submitThreeDSCode`, `tryAgain`, `cancelPayment`, `dismiss`,
-  `appWillEnterForeground`, `hostGone`…), and present it with
-  `Checkout.present(_:presenter:browser:)` and your own `CheckoutPresenting` (call `dismiss`'s
-  `completion` once the sheet is gone). Both callbacks are `@MainActor @Sendable`, so they can go
-  into system completion handlers in a Swift 6 app.
 - `MobileMoneyData.shared` exposes the Mobile Money rules (national digits, validation, operator
   detection, E.164, formatting).
+
+## Privacy
+
+`WajubMobile` ships a privacy manifest (`PrivacyInfo.xcprivacy`), which Xcode includes in your app's
+privacy report (*Product › Archive*, then *Generate Privacy Report* in the Organizer).
+
+- No tracking: no tracking domains, no advertising identifier, no App Tracking Transparency prompt.
+- Required-reason APIs: only the system boot time (`ProcessInfo.systemUptime`, reason `35F9.1`), to
+  measure elapsed time for the SDK's timers; it never leaves the device. No `UserDefaults`, file
+  timestamps, disk space or keyboard APIs. The install id is a file in Application Support.
+
+What the SDK sends to Wajub, the payment processor, when someone pays — declare it in App Store
+Connect (*App Privacy*) as data your app collects, **linked to the user's identity**, **not used for
+tracking**, for **App Functionality** (processing the payment and preventing fraud), together with
+what your app collects on its own:
+
+| App Store Connect | What the SDK sends |
+|---|---|
+| Contact Info › Name | First and last name or card holder, when the payment method asks for them |
+| Contact Info › Email Address | When the card provider asks for it |
+| Contact Info › Phone Number | The Mobile Money number, or a phone a card provider asks for |
+| Contact Info › Physical Address | Address, city, ZIP code and country, when the card provider asks for them |
+| Financial Info › Payment Info | The Mobile Money account, the Stripe `pm_…` your collector returns, a card PIN a provider asks for, and test cards in sandbox (card numbers never leave the device in live) |
+| Identifiers › Device ID | A SHA-256 of a random id made for the install (neither the advertising identifier nor `identifierForVendor`), for fraud prevention |
+| Other Data | A date of birth when a provider asks for it; the device's time zone, language and screen size, for fraud prevention |
+
+Card numbers typed in a provider's page in Safari go to that provider, not through the SDK.
 
 ## Development
 
@@ -317,9 +403,10 @@ module elsewhere.
   `podman run --rm -v "$PWD":/src:Z -w /src docker.io/library/swift:6.1 swift test`
   (`docker run` works the same). Only the core is compiled and tested there: SwiftUI and UIKit do
   not exist on Linux, so the sheet is compiled by the macOS job of CI.
-- `.github/workflows/ci.yml` runs both: a macOS job (`swift test` and the iOS Simulator build) and a
-  Linux job (`swift test` in `swift:6.1`, the core in Swift 6 language mode, and `ci/swift6-host`, a
-  small Swift 6 package that implements the SDK's protocols the way an app does).
+- `.github/workflows/ci.yml` runs both: a macOS job (`swift test`, and the iOS Simulator builds of the
+  sheet and of `ci/swift6-host`) and a Linux job (`swift test` in `swift:6.1`, the core in Swift 6
+  language mode, and `ci/swift6-host`, a small Swift 6 package that implements the SDK's protocols
+  the way an app does and holds this README's samples).
 - Timeouts (connect 10 s, then 30 s or 60 s for the whole call) are measured on the SDK's own clock,
   so the tests check them on a virtual clock. `URLSession` reports no connection event: a request
   with a body counts as connected once its body starts flowing; a request without one (the reads,
@@ -329,6 +416,12 @@ module elsewhere.
   them by hand (`test_SY_01_usesTheSyncedSpecFiles` checks their checksums). Test fixtures are a
   test-target resource and are not shipped; the Mobile Money data file is a resource of
   `WajubMobile` and is.
+- The Swift samples of this README are compiled by CI, in Swift 6 mode, from
+  `ci/swift6-host/Sources/Swift6Host/Readme/`, and `ReadmeTests` fails when a README sample is not
+  found there as written: change both together. Stripe's types are stand-ins there, as the package
+  does not depend on `stripe-ios`.
+- `PrivacyInfo.xcprivacy` is checked by `PrivacyManifestTests`: a required-reason API used in the
+  sources must be declared there.
 
 ## Documentation & support
 

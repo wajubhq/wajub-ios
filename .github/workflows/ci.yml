@@ -15,6 +15,10 @@ jobs:
       # The SwiftUI sheet only builds against the iOS SDK.
       - name: Build the sheet for iOS
         run: xcodebuild -scheme WajubMobile-Package -destination 'generic/platform=iOS Simulator' build
+      # The Swift 6 host and the README's samples, the iOS-only ones (the quick start) included.
+      - name: Build the Swift 6 host and README samples for iOS
+        working-directory: ci/swift6-host
+        run: xcodebuild -scheme Swift6Host -destination 'generic/platform=iOS Simulator' build
 
   linux:
     runs-on: ubuntu-latest
@@ -25,6 +29,7 @@ jobs:
         run: swift test
       - name: The core in Swift 6 language mode
         run: swift build --target WajubMobile -Xswiftc -swift-version -Xswiftc 6
-      # A Swift 6 app implementing the SDK's protocols (browser, presenter, card collector).
-      - name: A Swift 6 host builds against the public API
+      # A Swift 6 app implementing the SDK's protocols (browser, presenter, card collector), and the
+      # README's samples (ReadmeTests checks they are the README's text).
+      - name: A Swift 6 host and the README samples build against the public API
         run: swift build --package-path ci/swift6-host
