@@ -4,19 +4,20 @@ import Foundation
 struct PollSchedule: Sendable {
     private let random: @Sendable () -> Double
     private var interval = Timing.pollInterval
-    private(set) var lastChangeAt: Date
+    private(set) var lastChangeAt: TimeInterval
     private(set) var consecutiveErrors = 0
     private var lastStatus: TransactionStatus?
     private var retryAfter: TimeInterval?
 
-    init(start: Date, random: @escaping @Sendable () -> Double) {
+    /// `start` and every `now` are monotonic seconds (`WajubClock.uptime`).
+    init(start: TimeInterval, random: @escaping @Sendable () -> Double) {
         lastChangeAt = start
         self.random = random
     }
 
     /// The delay before the next poll: 5 s, ×1.5 per poll up to 15 s after 2 minutes without a change,
     /// 15 s while the socket is connected; after errors `min(5 s × 2^n, 60 s) ± 20 %`; a 429's `Retry-After`.
-    mutating func nextDelay(now: Date, socketConnected: Bool) -> TimeInterval {
+    mutating func nextDelay(now: TimeInterval, socketConnected: Bool) -> TimeInterval {
         if let wait = retryAfter {
             retryAfter = nil
             return wait
@@ -26,7 +27,7 @@ struct PollSchedule: Sendable {
             return base * (1 + Timing.pollErrorJitter * (2 * random() - 1))
         }
         if socketConnected { return Timing.pollWithSocket }
-        if now.timeIntervalSince(lastChangeAt) >= Timing.pollSlowAfter {
+        if now - lastChangeAt >= Timing.pollSlowAfter {
             interval = min(interval * Timing.pollSlowFactor, Timing.pollMaxInterval)
         } else {
             interval = Timing.pollInterval
@@ -34,7 +35,7 @@ struct PollSchedule: Sendable {
         return interval
     }
 
-    mutating func recordStatus(_ status: TransactionStatus, now: Date) {
+    mutating func recordStatus(_ status: TransactionStatus, now: TimeInterval) {
         consecutiveErrors = 0
         if status != lastStatus {
             lastStatus = status
@@ -58,7 +59,8 @@ struct PollSchedule: Sendable {
 final class StatusWatcher {
     private let client: WajubSession
     private let clock: WajubClock
-    private let deadline: Date
+    /// When the overall cap is reached, in monotonic seconds.
+    private let capAt: TimeInterval
     private var schedule: PollSchedule
     private var realtime: PusherClient?
     private var loop: Task<Void, Never>?
@@ -71,11 +73,11 @@ final class StatusWatcher {
     /// The overall cap is reached.
     var onCap: (() -> Void)?
 
-    init(client: WajubSession, clock: WajubClock, random: @escaping @Sendable () -> Double, deadline: Date) {
+    init(client: WajubSession, clock: WajubClock, random: @escaping @Sendable () -> Double, capAt: TimeInterval) {
         self.client = client
         self.clock = clock
-        self.deadline = deadline
-        schedule = PollSchedule(start: clock.now, random: random)
+        self.capAt = capAt
+        schedule = PollSchedule(start: clock.uptime, random: random)
     }
 
     /// Starts the realtime client next to the polling (call before `start()`).
@@ -87,7 +89,7 @@ final class StatusWatcher {
             connect: connect, clock: clock,
             onEvent: { [weak self] data in
                 guard let self, !self.stopped, let event = PaymentStatusUpdatedEvent(data: data) else { return }
-                self.schedule.recordStatus(event.update.status, now: self.clock.now)
+                self.schedule.recordStatus(event.update.status, now: self.clock.uptime)
                 self.onUpdate?(event.update)
             },
             onConnectedChange: { _ in })
@@ -125,14 +127,14 @@ final class StatusWatcher {
 
     private func run() async {
         while !stopped && !Task.isCancelled {
-            let delay = schedule.nextDelay(now: clock.now, socketConnected: isRealtimeConnected)
+            let delay = schedule.nextDelay(now: clock.uptime, socketConnected: isRealtimeConnected)
             do {
                 try await clock.sleep(seconds: delay)
             } catch {
                 return
             }
             guard !stopped && !Task.isCancelled else { return }
-            if clock.now >= deadline {
+            if clock.uptime >= capAt {
                 stop()
                 onCap?()
                 return
@@ -157,7 +159,7 @@ final class StatusWatcher {
             let update = StatusResponse(json: answer.body ?? .null).transaction
             // An empty answer is no information: poll again on schedule.
             guard update.isInformative else { return }
-            schedule.recordStatus(update.status, now: clock.now)
+            schedule.recordStatus(update.status, now: clock.uptime)
             onUpdate?(update)
         case 429:
             let retryAfter = answer.body?["retry_after"]?.double

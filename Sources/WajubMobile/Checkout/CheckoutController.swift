@@ -62,7 +62,16 @@ public final class CheckoutController {
     var config: SdkConfigResponse?
     var isReady = false
     var emittedState: CheckoutState?
-    var attempt: Attempt?
+    var attempt: Attempt? {
+        didSet {
+            if attempt?.seenProcessing == true { sawProcessing = true }
+        }
+    }
+    /// An attempt of this sheet was seen `processing`: from then on `/pay/cancel` is never sent (the API
+    /// would cancel a payment the payer may still approve).
+    var sawProcessing = false
+    /// The session as soon as it answered, before sdk-config: a dismiss decides on its status at once.
+    var answeredSession: SessionResponse?
     var lastTransaction: SessionTransaction?
     var watcher: StatusWatcher?
     var loadTask: Task<Void, Never>?
@@ -80,7 +89,8 @@ public final class CheckoutController {
         var key = UUID().uuidString.lowercased()
         var family: String
         var channel: String
-        var startedAt: Date
+        /// Monotonic seconds (`WajubClock.uptime`).
+        var startedAt: TimeInterval
         /// `onPaymentStarted` fired (a 2xx came).
         var started = false
         var seenProcessing = false
@@ -90,7 +100,7 @@ public final class CheckoutController {
         var continueURL: String?
         var clientSession: ClientSession?
         /// `POST /pay/process` got no answer after its retries; the last try was sent then.
-        var unansweredSince: Date?
+        var unansweredSince: TimeInterval?
         /// The `error_code` the payment already carried when this attempt was sent (a refusal left by an
         /// earlier try).
         var priorErrorCode: String?
@@ -144,12 +154,18 @@ public final class CheckoutController {
 
     /// "Cancel payment" is offered while no attempt is in flight.
     public var canCancelPayment: Bool {
-        guard result == nil, session != nil, !isWorking, attempt?.inFlight != true else { return false }
+        guard result == nil, session != nil, !isWorking, mayCancel else { return false }
         switch screen {
         case .methods, .form: return true
         case .failed(let error): return error.retryable
         default: return false
         }
+    }
+
+    /// `POST /pay/cancel` is sent only for a session that loaded `pending`, with no attempt of this sheet
+    /// in flight or ever seen `processing` (README §14).
+    var mayCancel: Bool {
+        (session ?? answeredSession)?.transaction.status == .pending && attempt?.inFlight != true && !sawProcessing
     }
 
     /// "Back" to the method list from a form.
@@ -235,6 +251,7 @@ public final class CheckoutController {
             loadFailed(.catalogue(WajubError.Code.loadError, language, httpStatus: answer.status))
             return
         }
+        answeredSession = session
         let config: SdkConfigResponse?
         if session.transaction.status.isPaid || CheckoutController.endedStatuses.contains(session.transaction.status) {
             configTask.cancel()
@@ -269,6 +286,8 @@ public final class CheckoutController {
         self.session = session
         self.config = config
         lastTransaction = session.transaction
+        // A refusal the payment already carries (another device's try) is not news for the 60 s rule.
+        if let code = session.transaction.errorCode { lastErrorCode = code }
         language = WajubLanguage.resolve(option: options.locale, session: session.locale, device: client.device.language)
         if let challenge = session.altcha { solveAltcha(challenge) }
 
@@ -321,7 +340,7 @@ public final class CheckoutController {
         } else {
             family = "unknown"
         }
-        attempt = Attempt(family: family, channel: context?.channelSlug ?? "", startedAt: clock.now, seenProcessing: true)
+        attempt = Attempt(family: family, channel: context?.channelSlug ?? "", startedAt: clock.uptime, seenProcessing: true)
         let screen: CheckoutScreen
         if context?.isUSSD == true {
             screen = .ussd(instruction: context?.payerInstruction)

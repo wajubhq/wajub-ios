@@ -114,7 +114,7 @@ another `present` can follow at once.
 | `returnURL` | `nil` | An `https` universal link back into your app, sent as `return_url` to provider pages. Without it the payer comes back by hand |
 | `mobileMoney` | | `MobileMoneyOptions(country:countryLocked:operatorMode:)`: start on a country (ISO-2), hide the country selector, `.choose` (the operator list, default) or `.detect` (the detected operator as a badge in the number field) |
 | `realtime` | from the session | `RealtimeOptions(enabled:host:port:tls:)`: another Pusher-protocol host (self-hosted Reverb or Soketi) or `enabled: false` for polling only |
-| `cancelOnDismiss` | `true` | Closing the sheet before any attempt cancels the payment (`POST /pay/cancel`). `false` keeps it open so you can present it again |
+| `cancelOnDismiss` | `true` | Closing the sheet before any attempt cancels the payment (`POST /pay/cancel`). `false` keeps it open so you can present it again. A payment that may still move is never cancelled: not while loading, not when the session loaded `processing`, not once an attempt of the sheet is running or was seen `processing` — closing then resolves `processing` (or `cancelled` with no call) |
 | `autoCloseSuccess` | `3000` | Milliseconds before the success screen closes itself; `0` keeps it |
 | `callbacks` | | See below |
 | `cardCollector` | `nil` | Needed for cards routed to Stripe |
@@ -181,7 +181,8 @@ Provider pages open in `SFSafariViewController` (card pages, 3-D Secure, client 
 handed to iOS (`UIApplication.open`, wallet pages that open the wallet's app). When the payer comes
 back — Safari closed, or the app back from the background — the sheet checks the payment at once.
 
-A payment request that gets no answer (no connection, a timeout) is never shown as a failure: the
+A payment request that gets no answer it can decide on (no connection, a timeout, a server error) is
+never shown as a failure: the
 sheet shows "Payment in progress" and watches the payment. If 60 s after the last try the payment
 still has not started (a refusal left by an earlier try does not count), the request most likely
 never reached Wajub: the sheet goes back to the form with a connection error, and the next Pay sends

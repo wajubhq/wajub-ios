@@ -150,9 +150,9 @@ public final class WajubSession: @unchecked Sendable {
 
     /// Sends a call with its retry policy and returns the last HTTP answer, whatever its status.
     /// Throws `TransportError` (no answer after the retries) or `CancellationError`. `onSend` hears
-    /// the time each try is sent.
+    /// when each try is sent (monotonic seconds).
     func send(_ endpoint: Endpoint, body: JSONValue? = nil, idempotencyKey: String? = nil,
-              policy: RetryPolicy? = nil, onSend: (@Sendable (Date) -> Void)? = nil) async throws -> APIAnswer {
+              policy: RetryPolicy? = nil, onSend: (@Sendable (TimeInterval) -> Void)? = nil) async throws -> APIAnswer {
         let policy = policy ?? endpoint.retryPolicy
         // Encoded once: an automatic retry resends exactly the same bytes.
         let bodyData = body?.serialized()
@@ -163,7 +163,7 @@ public final class WajubSession: @unchecked Sendable {
                                       headers: headers(hasBody: bodyData != nil, idempotencyKey: idempotencyKey),
                                       body: bodyData, connectTimeout: Timing.connectTimeout, timeout: endpoint.timeout)
             do {
-                onSend?(clock.now)
+                onSend?(clock.uptime)
                 let answer = APIAnswer(try await timedSend(request))
                 guard retries < policy.maxRetries, policy.statuses.contains(answer.status) else { return answer }
                 if answer.status == 429 {

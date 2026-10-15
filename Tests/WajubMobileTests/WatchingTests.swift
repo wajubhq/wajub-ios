@@ -5,16 +5,16 @@ import XCTest
 final class WatchingTests: XCTestCase {
     /// WT-01 polls on schedule
     func test_WT_01_pollsOnSchedule() {
-        let start = Date(timeIntervalSince1970: 1_791_968_400)
-        var schedule = PollSchedule(start: start, random: { 0.5 })
-        var now = start
+        // Monotonic seconds since the attempt started.
+        var schedule = PollSchedule(start: 0, random: { 0.5 })
+        var now: TimeInterval = 0
         var delays: [TimeInterval] = []
         // 5 s while the status keeps changing… then unchanged for 2 minutes: ×1.5 per poll up to 15 s.
         schedule.recordStatus(.processing, now: now)
-        while now.timeIntervalSince(start) < 200 {
+        while now < 200 {
             let delay = schedule.nextDelay(now: now, socketConnected: false)
             delays.append(delay)
-            now = now.addingTimeInterval(delay)
+            now += delay
             schedule.recordStatus(.processing, now: now)
         }
         XCTAssertEqual(Array(delays.prefix(24)), Array(repeating: 5, count: 24))
@@ -34,9 +34,9 @@ final class WatchingTests: XCTestCase {
         schedule.recordStatus(.processing, now: now)
         XCTAssertEqual(schedule.nextDelay(now: now, socketConnected: false), 5)
         // ± 20 % jitter on the error backoff.
-        var jittered = PollSchedule(start: start, random: { 1 })
+        var jittered = PollSchedule(start: 0, random: { 1 })
         jittered.recordError()
-        XCTAssertEqual(jittered.nextDelay(now: start, socketConnected: false), 12, accuracy: 0.0001)
+        XCTAssertEqual(jittered.nextDelay(now: 0, socketConnected: false), 12, accuracy: 0.0001)
         // A 429 waits its Retry-After.
         schedule.recordRateLimit(retryAfter: 42)
         XCTAssertEqual(schedule.nextDelay(now: now, socketConnected: false), 42)
@@ -63,6 +63,27 @@ final class WatchingTests: XCTestCase {
         await waitUntil("checked once") { harness.transport.requests("GET", "/pay/status").count == polls + 1 }
         harness.controller.close()
         XCTAssertEqual(harness.controller.result?.status, "processing")
+    }
+
+    /// WT-01 polls on schedule
+    @MainActor func test_WT_01_capsOnMonotonicTimeWhateverTheDeviceClockSays() async {
+        // The phone's clock runs 3 hours ahead of the server: expires_at (09:30) is already "past".
+        let harness = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe",
+                              clock: TestClock(start: Date(timeIntervalSince1970: 1_791_968_400 + 3 * 3600)))
+        harness.transport.answer("process-processing-mobile-money-live", "status-processing")
+        let controller = await harness.start()
+        controller.setPhone("670000000")
+        controller.submitMobileMoney()
+        await waitUntil("approval") { controller.state == .approvalRequired }
+        await harness.advance(by: 5)
+        XCTAssertEqual(harness.transport.requests("GET", "/pay/status").count, 1, "polled, not capped before the first poll")
+        XCTAssertEqual(controller.state, .approvalRequired)
+        await harness.drive(until: "cap", maxSteps: 200) {
+            if case .pending(let pending) = controller.screen { return pending.capReached }
+            return false
+        }
+        XCTAssertGreaterThanOrEqual(harness.clock.uptime, 900, "15 minutes of monotonic time")
+        controller.hostGone()
     }
 
     @MainActor private func approving(_ status: [FakeTransport.Reply], process: String = "process-processing-mobile-money-sandbox") async -> Harness {

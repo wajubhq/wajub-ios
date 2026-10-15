@@ -111,13 +111,18 @@ enum Endpoint: Equatable, Sendable {
 
 /// Time, injectable so tests run on a virtual clock.
 protocol WajubClock: Sendable {
+    /// Wall-clock time, for what the payer reads (timestamps, countdowns).
     var now: Date { get }
+    /// Monotonic seconds, for measuring durations: never compared with a server timestamp, and
+    /// unaffected by the device's clock being wrong or changed.
+    var uptime: TimeInterval { get }
     /// Suspends for `seconds`; throws `CancellationError` when the task is cancelled.
     func sleep(seconds: TimeInterval) async throws
 }
 
 struct SystemClock: WajubClock {
     var now: Date { Date() }
+    var uptime: TimeInterval { ProcessInfo.processInfo.systemUptime }
 
     func sleep(seconds: TimeInterval) async throws {
         guard seconds > 0 else {

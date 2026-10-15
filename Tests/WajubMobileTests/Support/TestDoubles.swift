@@ -5,8 +5,21 @@ import XCTest
 /// A virtual clock: sleepers wait until the test advances time.
 final class TestClock: WajubClock, @unchecked Sendable {
     private let lock = NSLock()
-    /// 2026-10-14T09:00:00Z: before the fixtures' `expires_at` (09:30).
-    private var current = Date(timeIntervalSince1970: 1_791_968_400)
+    /// 2026-10-14T09:00:00Z by default: before the fixtures' `expires_at` (09:30).
+    private var current: Date
+    private let origin: Date
+
+    init(start: Date = Date(timeIntervalSince1970: 1_791_968_400)) {
+        current = start
+        origin = start
+    }
+
+    /// Seconds since the clock started: the device's monotonic time.
+    var uptime: TimeInterval {
+        lock.lock()
+        defer { lock.unlock() }
+        return current.timeIntervalSince(origin)
+    }
     private var sleepers: [(id: UUID, deadline: Date, continuation: CheckedContinuation<Void, Error>)] = []
     private var recordedSleeps: [TimeInterval] = []
 
@@ -293,7 +306,7 @@ final class CallbackRecorder {
 @MainActor
 final class Harness {
     let transport = FakeTransport()
-    let clock = TestClock()
+    let clock: TestClock
     let browser = FakeBrowser()
     let recorder = CallbackRecorder()
     var sockets: [FakeWebSocket] = []
@@ -301,7 +314,8 @@ final class Harness {
     var collector: CardCollector?
     private(set) var controller: CheckoutController!
 
-    init(session: String? = nil, config: String? = nil) {
+    init(session: String? = nil, config: String? = nil, clock: TestClock = TestClock()) {
+        self.clock = clock
         transport.clock = clock
         if let session { transport.on("GET", "/pay/session", .fixture(session)) }
         if let config { transport.on("GET", "/pay/sdk-config", .fixture(config)) }

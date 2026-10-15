@@ -82,6 +82,12 @@ extension CheckoutController {
             fieldErrors = fields
             screen = .step(step)
             update()
+        case 500...:
+            // As for a network failure: the payer stays on the step, and the status may say more.
+            step.error = WajubError.from(answer, phase: .payment, language: language)
+            screen = .step(step)
+            update()
+            watcher?.pollNow()
         default:
             watchRefusalOrRetry(answer) {
                 step.error = WajubError.from(answer, phase: .payment, language: self.language)

@@ -16,7 +16,7 @@ extension CheckoutController {
             fail(.catalogue(WajubError.Code.rawCardDataNotAccepted, language))
             return
         }
-        var attempt = Attempt(family: family, channel: channel, startedAt: clock.now)
+        var attempt = Attempt(family: family, channel: channel, startedAt: clock.uptime)
         if let reusableKey {
             attempt.key = reusableKey
             self.reusableKey = nil
@@ -56,11 +56,13 @@ extension CheckoutController {
             } catch {
                 // No answer after the retries: the outcome is unknown, never a failure.
                 guard self.isCurrent(key) else { return }
-                self.attempt?.unansweredSince = lastSent.value ?? self.clock.now
+                self.attempt?.unansweredSince = lastSent.value ?? self.clock.uptime
                 self.unknownOutcome()
                 return
             }
             guard self.isCurrent(key) else { return }
+            // A 5xx is no answer to decide on either: the 60 s rule applies as after a timeout.
+            if answer.status >= 500 { self.attempt?.unansweredSince = lastSent.value ?? self.clock.uptime }
             if !securityRetry, self.isSecurityRefusal(answer) {
                 await self.renewAltcha()
                 self.pay(channel: channel, data: data.filter { $0.key != "altcha" && $0.key != "_client" }, family: family,
@@ -140,7 +142,8 @@ extension CheckoutController {
             isBusy = true
             rereadStatus(orFail: .catalogue(WajubError.Code.notProcessable, language))
         case 409 where body?.errorCode == WajubError.Code.paymentInProgress:
-            // A charge is already running: wait for it, no error.
+            // A charge is already running: wait for it, no error, and never cancel from now on.
+            sawProcessing = true
             screen = .pending(PendingScreen())
             update()
             startWatching()
@@ -332,7 +335,7 @@ extension CheckoutController {
             startWatching()
         case .pending(let pending) where pending.capReached:
             // The payer is back at it: a new watch window.
-            attempt?.startedAt = clock.now
+            attempt?.startedAt = clock.uptime
             screen = .pending(PendingScreen(continueURL: url))
             startWatching()
         default:
@@ -426,20 +429,20 @@ extension CheckoutController {
     }
 }
 
-/// When the last try of a request was sent.
+/// When the last try of a request was sent (monotonic seconds).
 final class SentTime: @unchecked Sendable {
-    let lock = NSLock()
-    var date: Date?
+    private let lock = NSLock()
+    private var time: TimeInterval?
 
-    var value: Date? {
+    var value: TimeInterval? {
         lock.lock()
         defer { lock.unlock() }
-        return date
+        return time
     }
 
-    func record(_ date: Date) {
+    func record(_ time: TimeInterval) {
         lock.lock()
-        self.date = date
+        self.time = time
         lock.unlock()
     }
 }
