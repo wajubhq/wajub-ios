@@ -231,6 +231,14 @@ final class PaymentAnswerTests: XCTestCase {
         XCTAssertEqual(rereading.controller.result?.status, "cancelled")
         XCTAssertTrue(rereading.recorder.errors.isEmpty, "no not_processable after the dismiss")
 
+        // Unreadable: the read fails after its retries → wait, never not_processable.
+        let unreadable = await Harness.mobileMoney(answers: "process-400-not-processable")
+        unreadable.transport.on("GET", "/pay/status", .failure(.network("offline")))
+        unreadable.controller.submitMobileMoney()
+        await unreadable.drive(until: "pending") { unreadable.controller.state == .pending }
+        XCTAssertTrue(unreadable.recorder.errors.isEmpty)
+        unreadable.controller.hostGone()
+
         // No information: never a refusal.
         let silent = await Harness.mobileMoney(answers: "process-400-not-processable")
         silent.transport.on("GET", "/pay/status", .json(200, [:]))

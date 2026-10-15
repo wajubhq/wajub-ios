@@ -133,7 +133,7 @@ extension CheckoutController {
         guard let collector = options.cardCollector, let transaction = session?.transaction else { return }
         // The attempt starts with the Pay press: while the card is tokenized, a dismiss resolves
         // `processing` and cancels nothing.
-        let attempt = Attempt(family: "card", channel: currentMethod?.channels.first?.slug ?? "card", startedAt: clock.now)
+        let attempt = Attempt(family: "card", channel: currentMethod?.channels.first?.slug ?? "card", startedAt: clock.uptime)
         self.attempt = attempt
         isCollectingCard = true
         banner = nil
@@ -170,7 +170,7 @@ extension CheckoutController {
 
     func startClientSession(fields: [String: String], securityRetry: Bool = false) {
         guard let channel = currentMethod?.channels.first else { return }
-        let attempt = Attempt(family: "card", channel: channel.slug, startedAt: clock.now)
+        let attempt = Attempt(family: "card", channel: channel.slug, startedAt: clock.uptime)
         self.attempt = attempt
         isBusy = true
         banner = nil

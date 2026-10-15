@@ -7,6 +7,7 @@ final class ImmediateClock: WajubClock, @unchecked Sendable {
     private let lock = NSLock()
     private var recorded: [TimeInterval] = []
     var now: Date { Date(timeIntervalSince1970: 1_791_968_400) }
+    var uptime: TimeInterval { 0 }
     var sleeps: [TimeInterval] { lock.locked { recorded } }
 
     func sleep(seconds: TimeInterval) async throws {
@@ -376,6 +377,26 @@ final class TransportTests: XCTestCase {
         await waitUntil("approval") { retry.state == .approvalRequired }
         XCTAssertEqual(again.transport.requests("POST", "/pay/process").last?.header("Idempotency-Key"), secondKey)
         retry.hostGone()
+
+        // The same after a 500, a 502/503/504 after its retries, and with a refusal the session carried at
+        // load (another device's try).
+        let carried = Fixtures.body("session-cm-aggregate").setting(["transaction", "error_code"], to: "insufficient_funds")
+        for (reply, session) in [(FakeTransport.Reply.fixture("error-500-production"), Fixtures.body("session-cm-aggregate")),
+                                 (.json(503, ["code": 503]), Fixtures.body("session-cm-aggregate")),
+                                 (.failure(.timeout), carried)] {
+            let harness = Harness(config: "sdk-config-cm-stripe")
+            harness.transport.on("GET", "/pay/session", .json(200, session))
+            harness.transport.on("POST", "/pay/process", reply)
+            harness.transport.on("GET", "/pay/status", .json(200, ["transaction": ["reference": "trx", "status": "pending",
+                                                                                   "error_code": session == carried ? "insufficient_funds" : nil]]))
+            let form = await harness.start()
+            form.setPhone("670000000")
+            form.submitMobileMoney()
+            await harness.drive(until: "pending") { form.state == .pending }
+            await harness.drive(until: "back on the form", maxSteps: 40) { form.state == .collectingDetails }
+            XCTAssertEqual(form.banner?.code, WajubError.Code.networkError)
+            form.hostGone()
+        }
 
         // A `pending` with an error_code is a previous attempt's leftover: keep watching.
         let leftover = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")

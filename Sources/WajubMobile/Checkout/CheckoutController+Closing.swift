@@ -176,17 +176,8 @@ extension CheckoutController {
             }
             finish(.cancelled(reason: reason, redirectURL: nil))
         default:
-            // `processing`, `partial`, or no readable answer: money may move.
-            if reason == .payerCancelled {
-                isClosing = false
-                attempt = Attempt(family: attempt?.family ?? "unknown", channel: attempt?.channel ?? "", startedAt: clock.now,
-                                  seenProcessing: status != nil)
-                screen = .pending(PendingScreen())
-                self.update()
-                startWatching()
-            } else {
-                finish(.processing(transaction: transaction))
-            }
+            // `processing`, `partial`, or no readable answer: money may move (CN-04).
+            finish(.processing(transaction: transaction))
         }
     }
 
@@ -201,7 +192,18 @@ extension CheckoutController {
             finish(settled)
             return
         }
-        guard session != nil, isReady, options.cancelOnDismiss else {
+        // The session has not answered: nothing to cancel.
+        guard let loaded = session ?? answeredSession else {
+            finish(.cancelled(reason: .dismissed, redirectURL: nil))
+            return
+        }
+        // Once it has answered, its status decides at once (sdk-config may still be loading).
+        let status = loaded.transaction.status
+        if status == .processing || status == .partial {
+            finish(.processing(transaction: loaded.transaction))
+            return
+        }
+        guard options.cancelOnDismiss, mayCancel else {
             finish(.cancelled(reason: .dismissed, redirectURL: nil))
             return
         }

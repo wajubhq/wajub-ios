@@ -151,12 +151,19 @@ final class LifecycleTests: XCTestCase {
         asked.transport.answer("cancel-400-not-cancellable", "status-processing")
         let askedController = await asked.start()
         askedController.cancelPayment()
-        await waitUntil("pending") { askedController.state == .pending }
-        XCTAssertNil(askedController.result, "the sheet waits for the payment running")
-        await asked.advance(by: 5)
-        XCTAssertEqual(asked.transport.requests("GET", "/pay/status").count, 2, "watching")
-        askedController.hostGone()
-        XCTAssertEqual(askedController.result?.status, "processing")
+        await waitUntil("closed") { askedController.result != nil }
+        XCTAssertEqual(askedController.result?.status, "processing", "resolved with what the status says")
+
+        // Unreadable (the read fails after its retries, or says nothing): `processing`.
+        for reply: FakeTransport.Reply in [.failure(.network("offline")), .json(200, [:])] {
+            let unreadable = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
+            unreadable.transport.answer("cancel-400-not-cancellable")
+            unreadable.transport.on("GET", "/pay/status", reply)
+            let controller = await unreadable.start()
+            controller.cancelPayment()
+            await unreadable.drive(until: "closed") { controller.result != nil }
+            XCTAssertEqual(controller.result?.status, "processing")
+        }
 
         let failed = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
         failed.transport.answer("cancel-400-not-cancellable")
@@ -192,6 +199,60 @@ final class LifecycleTests: XCTestCase {
         await harness.advance(by: 3)
         XCTAssertEqual(controller.result?.status, "complete")
         XCTAssertTrue(harness.transport.requests("POST", "/pay/cancel").isEmpty)
+    }
+
+    /// CN-04 handles a refused cancel
+    @MainActor func test_CN_04_neverCancelsAPaymentThatMayStillMove() async {
+        // A session restored `processing`: no "Cancel payment", and a dismiss sends nothing.
+        let restored = Harness(session: "session-processing-mobile-money")
+        restored.transport.answer("status-processing")
+        let approval = await restored.start()
+        XCTAssertEqual(approval.state, .approvalRequired)
+        XCTAssertFalse(approval.canCancelPayment)
+        approval.dismiss()
+        XCTAssertEqual(approval.result?.status, "processing")
+
+        // Dismissed once the session answered `processing`, while sdk-config still loads: no call.
+        let early = Harness(session: "session-processing-mobile-money")
+        let configGate = Gate()
+        early.transport.on("GET", "/pay/sdk-config", .gated(configGate, .fixture("sdk-config-sandbox")))
+        let loading = early.makeController { $0.readyTimeout = 0 }
+        loading.start()
+        await waitUntil("session answered") { loading.answeredSession != nil }
+        XCTAssertNil(loading.state, "not ready yet")
+        loading.dismiss()
+        XCTAssertEqual(loading.result?.status, "processing")
+        // Dismissed before the session answered: cancelled, no call.
+        let blind = Harness()
+        blind.transport.on("GET", "/pay/session", .gated(Gate(), .fixture("session-cm-aggregate")))
+        let waiting = blind.makeController()
+        waiting.start()
+        waiting.dismiss()
+        XCTAssertEqual(waiting.result, .cancelled(reason: .dismissed, redirectURL: nil))
+
+        // An attempt was seen processing, then ended: back on the form, still no cancel.
+        let ended = await Harness.mobileMoney(answers: "process-processing-mobile-money-sandbox", "status-pending-attempt-refused")
+        ended.controller.submitMobileMoney()
+        await waitUntil("approval") { ended.controller.state == .approvalRequired }
+        XCTAssertFalse(ended.controller.canCancelPayment, "no Cancel payment while approving")
+        await ended.advance(by: 5)
+        XCTAssertEqual(ended.controller.state, .failed)
+        ended.controller.tryAgain()
+        XCTAssertEqual(ended.controller.state, .collectingDetails)
+        XCTAssertFalse(ended.controller.canCancelPayment)
+        ended.controller.dismiss()
+        XCTAssertEqual(ended.controller.result, .cancelled(reason: .dismissed, redirectURL: nil))
+
+        // A decline that never reached processing leaves the payment cancellable.
+        let declined = await Harness.mobileMoney(answers: "process-failed-402", "cancel-200")
+        declined.controller.submitMobileMoney()
+        await waitUntil("declined") { declined.controller.state == .failed }
+        XCTAssertTrue(declined.controller.canCancelPayment)
+
+        for harness in [restored, early, ended] {
+            XCTAssertTrue(harness.transport.requests("POST", "/pay/cancel").isEmpty)
+        }
+        declined.controller.hostGone()
     }
 
     /// ST-01 reports Wajub.js states

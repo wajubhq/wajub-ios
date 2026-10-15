@@ -106,6 +106,8 @@ public struct SessionTransaction: Equatable, Sendable {
     public var updatedAt: String?
     public var terminalAt: String?
     public var processingContext: ProcessingContext?
+    /// A refused try's code, when the payment carries one.
+    public var errorCode: String?
 
     public init(json: JSONValue) throws {
         guard let amount = json["amount"]?.double else { throw WireDecodingError(field: "transaction.amount") }
@@ -131,6 +133,7 @@ public struct SessionTransaction: Equatable, Sendable {
         updatedAt = json["updated_at"]?.nonEmptyString
         terminalAt = json["terminal_at"]?.nonEmptyString
         processingContext = json["processing_context"].flatMap { $0.object == nil ? nil : ProcessingContext(json: $0) }
+        errorCode = json["error_code"]?.nonEmptyString
     }
 
     /// A transaction in an optional position: `nil` when absent or unreadable.

@@ -118,6 +118,25 @@ final class ConfirmationTests: XCTestCase {
         birthday.controller.hostGone()
     }
 
+    /// CF-04 shows step validation errors
+    @MainActor func test_CF_04_staysOnTheStepAfterAServerError() async {
+        for reply: FakeTransport.Reply in [.fixture("error-500-production"), .json(503, ["code": 503])] {
+            let harness = await stepHarness("process-requires-otp")
+            harness.transport.on("POST", "/pay/otp/verify", reply)
+            await waitUntil("otp") { harness.controller.state == .otpRequired }
+            let polls = harness.transport.requests("GET", "/pay/status").count
+            harness.controller.submitStep(["code": "123456"])
+            await waitUntil("back on the step") {
+                if case .step(let step) = harness.controller.screen { return step.error != nil }
+                return false
+            }
+            XCTAssertEqual(harness.controller.state, .otpRequired, "like a network failure: never FAILED")
+            await waitUntil("polled") { harness.transport.requests("GET", "/pay/status").count > polls }
+            XCTAssertEqual(harness.transport.requests("POST", "/pay/otp/verify").count, 1, "never retried")
+            harness.controller.hostGone()
+        }
+    }
+
     /// CF-05 resends after the countdown
     @MainActor func test_CF_05_resendsAfterTheCountdown() async throws {
         let harness = await stepHarness("process-requires-otp")

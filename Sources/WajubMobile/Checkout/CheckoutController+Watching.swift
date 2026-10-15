@@ -6,11 +6,11 @@ extension CheckoutController {
 
     func startWatching() {
         guard watcher == nil, result == nil, let session else { return }
-        var deadline = (attempt?.startedAt ?? clock.now).addingTimeInterval(Timing.pollOverallCap)
-        if let expiresAt = session.transaction.expiresAt.flatMap(CheckoutController.parseDate), expiresAt < deadline {
-            deadline = expiresAt
-        }
-        let watcher = StatusWatcher(client: client, clock: clock, random: client.random, deadline: deadline)
+        // 15 minutes of monotonic time from the attempt's start. Never a server timestamp against the
+        // device's clock (a phone running fast would end the watch before its first poll): the API's
+        // 410 says when the session is over.
+        let capAt = (attempt?.startedAt ?? clock.uptime) + Timing.pollOverallCap
+        let watcher = StatusWatcher(client: client, clock: clock, random: client.random, capAt: capAt)
         watcher.onUpdate = { [weak self] update in self?.statusUpdated(update) }
         watcher.onRefusal = { [weak self] answer in
             guard let self else { return }
@@ -83,7 +83,7 @@ extension CheckoutController {
         // An error_code from before this attempt is a leftover; only a newer one says the request arrived.
         guard let attempt, let since = attempt.unansweredSince,
               status.errorCode == nil || status.errorCode == attempt.priorErrorCode,
-              clock.now.timeIntervalSince(since) >= Timing.unansweredRequestWait else { return }
+              clock.uptime - since >= Timing.unansweredRequestWait else { return }
         stopWatching()
         reusableKey = attempt.key
         self.attempt = nil
@@ -133,24 +133,22 @@ extension CheckoutController {
             // A dismiss, a cancel or a new attempt meanwhile: this answer is not theirs.
             guard !Task.isCancelled, self.isCurrent(key), !self.isClosing else { return }
             self.isBusy = false
-            guard let answer, answer.isSuccess else {
-                self.fail(fallback)
-                return
-            }
-            let update = StatusResponse(json: answer.body ?? .null).transaction
+            let update = answer.flatMap { $0.isSuccess ? StatusResponse(json: $0.body ?? .null).transaction : nil }
+                ?? StatusUpdate(status: TransactionStatus(rawValue: ""))
             if !update.isInformative {
+                // Unreadable (the read failed after its retries, or said nothing): wait for the status.
                 // No information: wait for the status rather than refuse.
-                self.attempt = self.attempt ?? Attempt(family: "unknown", channel: "", startedAt: self.clock.now)
+                self.attempt = self.attempt ?? Attempt(family: "unknown", channel: "", startedAt: self.clock.uptime)
                 self.attempt?.inFlight = true
                 self.screen = .pending(PendingScreen())
                 self.update()
                 self.startWatching()
             } else if update.status.isPaid || CheckoutController.endedStatuses.contains(update.status) {
-                self.attempt = self.attempt ?? Attempt(family: "unknown", channel: "", startedAt: self.clock.now)
+                self.attempt = self.attempt ?? Attempt(family: "unknown", channel: "", startedAt: self.clock.uptime)
                 self.statusUpdated(update)
             } else if update.status == .processing || update.status == .partial {
                 // An attempt is running: money may move.
-                self.attempt = self.attempt ?? Attempt(family: "unknown", channel: "", startedAt: self.clock.now)
+                self.attempt = self.attempt ?? Attempt(family: "unknown", channel: "", startedAt: self.clock.uptime)
                 self.attempt?.inFlight = true
                 self.attempt?.seenProcessing = true
                 self.screen = .pending(PendingScreen())
