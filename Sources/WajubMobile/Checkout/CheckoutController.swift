@@ -94,6 +94,12 @@ public final class CheckoutController {
         var phone: String?
         var continueURL: String?
         var clientSession: ClientSession?
+        /// `POST /pay/client-session/complete` is on its way.
+        var completingClientSession = false
+        /// `/complete` answered without a verdict: the watch decides from then on.
+        var clientSessionAnswered = false
+        /// A refused try the watch read while `/complete` ran: it stands if `/complete` has no verdict.
+        var heldRefusal: StatusUpdate?
         /// `POST /pay/process` got no answer after its retries; the last try was sent then.
         var unansweredSince: TimeInterval?
         /// The `error_code` the payment already carried when this attempt was sent (a refusal left by an
@@ -253,15 +259,36 @@ public final class CheckoutController {
             return
         }
         answeredSession = session
-        let config: SdkConfigResponse?
-        if session.transaction.status.isPaid || CheckoutController.endedStatuses.contains(session.transaction.status) {
+        let status = session.transaction.status
+        // Every session that is not `pending` is drawn from the session alone, at once.
+        if status.isPaid || CheckoutController.endedStatuses.contains(status) {
             configTask.cancel()
-            config = nil
-        } else {
-            config = await configTask.value
+            guard result == nil else { return }
+            sessionLoaded(session, config: nil)
+            return
         }
+        if status == .processing || status == .partial {
+            // The screen of the running attempt, and the watch. sdk-config only matters if the payer goes
+            // back to the methods: it is kept when it comes.
+            guard result == nil else {
+                configTask.cancel()
+                return
+            }
+            sessionLoaded(session, config: nil)
+            guard let config = await CheckoutController.value(of: configTask), !Task.isCancelled, result == nil else { return }
+            self.config = config
+            methods = MethodResolver.methods(session, config: config, language: language, hasCardCollector: options.cardCollector != nil)
+            update()
+            return
+        }
+        let config = await CheckoutController.value(of: configTask)
         guard !Task.isCancelled, result == nil else { return }
         sessionLoaded(session, config: config)
+    }
+
+    /// A task's value, the task cancelled with the waiting one.
+    static func value<T: Sendable>(of task: Task<T, Never>) async -> T {
+        await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
     }
 
     static let endedStatuses: Set<TransactionStatus> = [.failed, .cancelled, .expired]
@@ -312,7 +339,10 @@ public final class CheckoutController {
             let shown = MethodResolver.shownChannels(session, config: config, hasCardCollector: options.cardCollector != nil)
             methods = MethodResolver.methods(session, config: config, language: language, hasCardCollector: options.cardCollector != nil)
             guard !methods.isEmpty else {
-                loadFailed(.catalogue(WajubError.Code.noPaymentMethod, language))
+                // Channels that need sdk-config (cards, wallets) while it could not be read: a load
+                // error, retryable, rather than "no payment method".
+                let code = config == nil && !session.channels.isEmpty ? WajubError.Code.loadError : WajubError.Code.noPaymentMethod
+                loadFailed(.catalogue(code, language))
                 return
             }
             if methods.count == 1, methods[0].isEnabled {

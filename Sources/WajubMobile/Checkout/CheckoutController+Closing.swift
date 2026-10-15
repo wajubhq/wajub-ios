@@ -44,6 +44,17 @@ extension CheckoutController {
         emit { try self.options.callbacks.onError?(error) }
     }
 
+    /// A definitive refusal (a decline, a step failed for good, a refused 3-D Secure, a refused card
+    /// session, a `pending` re-read after a 400): the attempt is decided and the payment is `pending`
+    /// again, so it can be cancelled (README §14).
+    func pendingAgain() {
+        attempt?.inFlight = false
+        if var transaction = lastTransaction ?? session?.transaction {
+            transaction.status = .pending
+            lastTransaction = transaction
+        }
+    }
+
     func scheduleAutoClose() {
         guard options.autoCloseSuccess > 0 else { return }
         let delay = Double(options.autoCloseSuccess) / 1000
@@ -234,13 +245,41 @@ extension CheckoutController {
         finish(settledResult() ?? .cancelled(reason: .hostGone, redirectURL: nil))
     }
 
+    /// Run by a presenter once its sheet left the screen: every `interval` seconds, until the checkout
+    /// has a result, asks where the sheet is (`nil`: the sheet no longer exists). Back on screen ends the
+    /// watch; gone twice in a row settles `host_gone`. While a cancel runs (`isClosing`), its answer
+    /// settles first; the watch goes on, as a refused cancel can leave the sheet open (a paid payment's
+    /// success screen), and then the host being gone settles it.
+    package func watchHost(every interval: TimeInterval = 0.5, presence: @escaping @MainActor () -> SheetPresence?) {
+        Task { @MainActor in
+            var goneChecks = 0
+            while self.result == nil {
+                do { try await self.clock.sleep(seconds: interval) } catch { return }
+                guard self.result == nil else { return }
+                switch presence() {
+                case .shown?:
+                    return
+                case .covered?:
+                    goneChecks = 0
+                case .gone?, nil:
+                    goneChecks += 1
+                }
+                if goneChecks >= 2, !self.isClosing {
+                    self.hostGone()
+                    return
+                }
+            }
+        }
+    }
+
     /// The result when the sheet closes now without cancelling anything; `nil` when nothing was attempted.
     func settledResult() -> CheckoutResult? {
         switch screen {
         case .success(let payment):
             return .complete(payment: payment, transaction: lastTransaction)
-        case .failed(let error) where attempt?.inFlight != true, .expired(let error), .loadError(let error),
-             .ended(let error, _):
+        // Closing on FAILED resolves `failed` with the error seen, even when an attempt may still be
+        // running (`unsupported_action`, `redirect_unavailable` after a 2xx): nothing is cancelled then.
+        case .failed(let error), .expired(let error), .loadError(let error), .ended(let error, _):
             return .failed(error: error, transaction: session == nil ? nil : lastTransaction)
         case .cancelled(let error?):
             return .failed(error: error, transaction: lastTransaction)
@@ -267,4 +306,14 @@ extension CheckoutController {
         onChange?()
         onFinish?(result)
     }
+}
+
+/// Where a presenter's sheet is, for `CheckoutController.watchHost(every:presence:)`.
+package enum SheetPresence: Sendable {
+    /// On screen again.
+    case shown
+    /// Covered by what it presented (Safari), which is on screen.
+    case covered
+    /// Neither the sheet nor what covers it is on screen.
+    case gone
 }

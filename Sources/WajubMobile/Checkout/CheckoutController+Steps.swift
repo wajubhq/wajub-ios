@@ -68,7 +68,8 @@ extension CheckoutController {
                     screen = .step(step)
                     update()
                 } else {
-                    attempt?.inFlight = false
+                    // A step failed for good: the attempt is refused.
+                    pendingAgain()
                     fail(error)
                 }
             }
@@ -153,7 +154,7 @@ extension CheckoutController {
             guard let self else { return }
             do { try await self.clock.sleep(seconds: expiresAt.timeIntervalSince(self.clock.now)) } catch { return }
             guard self.result == nil, case .threeDS(let current) = self.screen, current.id == challenge.id, !current.accepted else { return }
-            self.attempt?.inFlight = false
+            self.pendingAgain()
             self.fail(.catalogue(WajubError.Code.threeDSTimeout, self.language))
         }
     }
@@ -201,7 +202,7 @@ extension CheckoutController {
                 self.update()
             } else {
                 self.watchRefusalOrRetry(answer) {
-                    self.attempt?.inFlight = false
+                    self.pendingAgain()
                     self.fail(WajubSession.threeDSError(answer, self.language))
                 }
             }

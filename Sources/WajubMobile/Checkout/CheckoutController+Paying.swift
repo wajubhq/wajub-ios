@@ -137,8 +137,8 @@ extension CheckoutController {
         if answer.status == 402, let code = body?.errorCode { lastErrorCode = code }
         switch answer.status {
         case 400:
-            attempt?.inFlight = false
-            // Still busy until the status says what happened: no Pay, no "Cancel payment" meanwhile.
+            // Still busy, and the attempt undecided, until the status says what happened: no Pay, no
+            // "Cancel payment", and a dismiss or the host going away resolves `processing` meanwhile.
             isBusy = true
             rereadStatus(orFail: .catalogue(WajubError.Code.notProcessable, language))
         case 409 where body?.errorCode == WajubError.Code.paymentInProgress:
@@ -164,7 +164,7 @@ extension CheckoutController {
         case 500...:
             unknownOutcome()
         default:
-            attempt?.inFlight = false
+            if answer.status == 402 { pendingAgain() } else { attempt?.inFlight = false }
             if clientSession { clientSessionFailed = true }
             if answer.status == 429, let seconds = error.retryAfterSeconds {
                 retryAvailableAt = clock.now.addingTimeInterval(TimeInterval(seconds))
@@ -386,7 +386,14 @@ extension CheckoutController {
         }
     }
 
+    /// `POST /pay/client-session/complete`, one at a time (two quick returns send one). Its verdict
+    /// decides over a refused try the watch reads meanwhile; without a verdict (still processing, or no
+    /// answer), that refused try stands, and the watch decides from then on.
     func completeClientSession(_ session: ClientSession) {
+        guard attempt?.completingClientSession == false else { return }
+        attempt?.completingClientSession = true
+        attempt?.clientSessionAnswered = false
+        attempt?.heldRefusal = nil
         let key = attempt?.key
         workTask = Task { [weak self] in
             guard let self else { return }
@@ -395,10 +402,11 @@ extension CheckoutController {
                 answer = try await self.client.send(.clientSessionComplete, body: ["client_session_id": .string(session.id)])
             } catch {
                 guard self.isCurrent(key) else { return }
-                self.watcher?.pollNow()
+                self.clientSessionUndecided()
                 return
             }
             guard self.isCurrent(key) else { return }
+            self.attempt?.completingClientSession = false
             let body = answer.body.map(APIErrorBody.init(json:))
             switch answer.status {
             case 200...299:
@@ -410,20 +418,32 @@ extension CheckoutController {
                     self.attempt?.inFlight = false
                     self.fail(.catalogue(WajubError.Code.paymentFailed, self.language))
                 } else {
-                    self.watcher?.pollNow()
+                    self.clientSessionUndecided()
                 }
             case 402, 422:
                 if let transaction = body?.transaction { self.lastTransaction = transaction }
                 if answer.status == 402, let code = body?.errorCode { self.lastErrorCode = code }
-                self.attempt?.inFlight = false
+                self.pendingAgain()
                 self.clientSessionFailed = true
                 self.fail(WajubError.from(answer, phase: .payment, language: self.language))
             case 410:
                 self.attempt?.inFlight = false
                 self.expire(WajubError.from(answer, phase: .payment, language: self.language))
             default:
-                self.watcher?.pollNow()
+                self.clientSessionUndecided()
             }
+        }
+    }
+
+    /// `/complete` gave no verdict: a refused try read meanwhile stands, else the watch looks at once.
+    func clientSessionUndecided() {
+        attempt?.completingClientSession = false
+        attempt?.clientSessionAnswered = true
+        if let held = attempt?.heldRefusal {
+            attempt?.heldRefusal = nil
+            statusUpdated(held)
+        } else {
+            watcher?.pollNow()
         }
     }
 }

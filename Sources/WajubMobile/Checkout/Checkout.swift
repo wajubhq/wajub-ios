@@ -24,17 +24,25 @@ public enum Checkout {
     /// `presenter.present(_:)`, starts it, and calls `presenter.dismiss(_:completion:)` once it settles.
     ///
     /// Throws `WajubError` `sheet_already_presented` at once when a sheet is already open (the open
-    /// sheet is left alone).
+    /// sheet is left alone). A sheet that has settled and is closing is not open: called from
+    /// `onComplete`, or right after the host went away, `present()` waits for it to be gone.
     public static func present(_ options: PresentOptions, presenter: CheckoutPresenting,
                                browser: BrowserOpening) async throws -> CheckoutResult {
-        guard !isPresenting else { throw alreadyPresented }
+        try await waitForTheClosingSheet()
         return try await present(CheckoutController(options: options, browser: browser), presenter: presenter)
     }
 
     static func present(_ controller: CheckoutController, presenter: CheckoutPresenting) async throws -> CheckoutResult {
-        guard !isPresenting else { throw alreadyPresented }
+        try await waitForTheClosingSheet()
         isPresenting = true
-        defer { isPresenting = false }
+        current = controller
+        defer {
+            isPresenting = false
+            current = nil
+            let waiting = whenGone
+            whenGone = []
+            for waiter in waiting { waiter.resume() }
+        }
         return await withCheckedContinuation { (continuation: CheckedContinuation<CheckoutResult, Never>) in
             controller.onFinish = { [weak presenter, weak controller] result in
                 let once = Once()
@@ -54,6 +62,19 @@ public enum Checkout {
             }
             presenter.present(controller)
             controller.start()
+        }
+    }
+
+    /// The checkout of the sheet on screen.
+    private static var current: CheckoutController?
+    /// `present()` calls waiting for a settled sheet to be gone.
+    private static var whenGone: [CheckedContinuation<Void, Never>] = []
+
+    /// Returns once no sheet is on screen; throws `sheet_already_presented` while one is open (not settled).
+    private static func waitForTheClosingSheet() async throws {
+        while isPresenting {
+            guard current?.result != nil else { throw alreadyPresented }
+            await withCheckedContinuation { whenGone.append($0) }
         }
     }
 

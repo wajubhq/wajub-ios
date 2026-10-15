@@ -398,16 +398,17 @@ final class TransportTests: XCTestCase {
             form.hostGone()
         }
 
-        // A `pending` with an error_code is a previous attempt's leftover: keep watching.
-        let leftover = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
-        leftover.transport.on("POST", "/pay/process", .failure(.timeout))
-        leftover.transport.answer("status-pending-attempt-refused")
-        let waiting = await leftover.start()
+        // A `pending` with an error_code newer than the one before the attempt: the request arrived and
+        // was refused, FAILED at once (the carried one above is a leftover, not news).
+        let refused = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
+        refused.transport.on("POST", "/pay/process", .failure(.timeout))
+        refused.transport.answer("status-pending-attempt-refused")
+        let waiting = await refused.start()
         waiting.setPhone("670000000")
         waiting.submitMobileMoney()
-        await leftover.drive(until: "pending") { waiting.state == .pending }
-        for _ in 0..<14 { await leftover.advance(by: 5) }
-        XCTAssertEqual(waiting.state, .pending)
+        await refused.drive(until: "pending") { waiting.state == .pending }
+        await refused.advance(by: 5)
+        XCTAssertEqual(waiting.state, .failed)
         waiting.hostGone()
     }
 

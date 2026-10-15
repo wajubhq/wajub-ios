@@ -219,7 +219,7 @@ final class LifecycleTests: XCTestCase {
         let loading = early.makeController { $0.readyTimeout = 0 }
         loading.start()
         await waitUntil("session answered") { loading.answeredSession != nil }
-        XCTAssertNil(loading.state, "not ready yet")
+        XCTAssertEqual(loading.state, .approvalRequired, "restored from the session alone, sdk-config still loading")
         loading.dismiss()
         XCTAssertEqual(loading.result?.status, "processing")
         // Dismissed before the session answered: cancelled, no call.

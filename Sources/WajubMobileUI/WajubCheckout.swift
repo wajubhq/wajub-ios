@@ -217,32 +217,19 @@ final class CheckoutHostingController: UIHostingController<CheckoutSheetView> {
     }
 
     /// While the sheet is off screen (swiped away, covered by Safari, or its host's stack torn down or
-    /// taken out of the window), it checks twice a second whether it, or what covers it, is still on
-    /// screen; gone twice in a row and the checkout not settled, the host went away. A swipe settles the
-    /// checkout itself first.
+    /// taken out of the window), the checkout checks twice a second whether it, or what covers it, is
+    /// still on screen; gone twice in a row and the checkout not settled, the host went away. A swipe
+    /// settles the checkout itself first (or its cancel does).
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
-        let controller = model.controller
-        Task { @MainActor [weak self] in
-            var goneChecks = 0
-            while controller.result == nil {
-                try? await Task.sleep(nanoseconds: 500_000_000)
-                guard let self else {
-                    if !controller.isClosing { controller.hostGone() }
-                    return
-                }
-                if self.viewIfLoaded?.window != nil { return }
-                var top: UIViewController = self
-                while let presented = top.presentedViewController {
-                    top = presented
-                }
-                let gone = self.presentingViewController == nil || top.viewIfLoaded?.window == nil
-                goneChecks = gone ? goneChecks + 1 : 0
-                if goneChecks >= 2 {
-                    if !controller.isClosing { controller.hostGone() }
-                    return
-                }
+        model.controller.watchHost { [weak self] in
+            guard let self else { return nil }
+            if self.viewIfLoaded?.window != nil { return .shown }
+            var top: UIViewController = self
+            while let presented = top.presentedViewController {
+                top = presented
             }
+            return self.presentingViewController == nil || top.viewIfLoaded?.window == nil ? .gone : .covered
         }
     }
 }

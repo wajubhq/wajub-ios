@@ -9,9 +9,10 @@
   `PaymentSuccess`, `WajubError` and `Appearance`.
 - `WajubCheckout.present(_:from:)` presents the sheet and resolves exactly once with a
   `CheckoutResult` (`complete`, `processing`, `failed` or `cancelled`) when the sheet is gone, so the
-  next `present` can follow at once. Presenting a second sheet while one is open throws
-  `sheet_already_presented`; a sheet with no screen to present from, or whose presenting screen goes
-  away, resolves at once (`host_gone`).
+  next `present` can follow at once (one called from `onComplete` waits for the sheet to be gone).
+  Presenting a second sheet while one is open throws `sheet_already_presented`; a sheet with no
+  screen to present from, or whose presenting screen goes away, resolves at once (`host_gone`), even
+  while "Cancel payment" runs.
 - Mobile Money: country, number with its dial code formatted as you type, operator picker with
   logos or brand badges, the operators of an aggregate such as `cm.mobile`, detection of the
   operator from the number, a clear message when the number belongs to another operator, numbers
@@ -24,8 +25,10 @@
 - One-tap wallets such as Djamo, and Wave's redirect.
 - Closing the sheet cancels the payment (`POST /pay/cancel`) only when nothing can still move: its
   last known status is `pending` and no attempt is undecided (from the Pay press until a definitive
-  answer). Otherwise closing resolves `processing`; after a definitive refusal "Cancel payment" is
-  offered again.
+  answer: a decline, a step or 3-D Secure failed for good, a refused card session, a `pending` with a
+  new `error_code`). Otherwise closing resolves `processing`, or `failed` on a failure screen; after
+  a definitive refusal "Cancel payment" is offered again. A payment already `processing` when the
+  sheet opens is restored from the session at once, without waiting for the payment methods' setup.
 - The card providers' confirmation steps (code, PIN, phone, date of birth, billing address) and the
   sandbox 3-D Secure email code, each with its own screen, resend countdown and remaining attempts.
 - The payment's status is followed in real time over Pusher, Reverb or Soketi (`PresentOptions.realtime`

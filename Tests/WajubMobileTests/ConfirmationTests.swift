@@ -202,6 +202,9 @@ final class ConfirmationTests: XCTestCase {
         await waitUntil("failed") { refused.controller.state == .failed }
         guard case .failed(let error) = refused.controller.screen else { return XCTFail("not failed") }
         XCTAssertEqual(error.code, WajubError.Code.threeDSRejected)
+        // A definitive refusal: the payment is pending again, and "Cancel payment" is offered.
+        XCTAssertEqual(refused.controller.lastKnownStatus, .pending)
+        XCTAssertEqual(refused.controller.canCancelPayment, error.retryable)
         refused.controller.hostGone()
 
         // A new code, then the timeout.
@@ -215,6 +218,8 @@ final class ConfirmationTests: XCTestCase {
         await timeout.drive(until: "3ds_timeout") { timeout.controller.state == .failed }
         guard case .failed(let expired) = timeout.controller.screen else { return XCTFail("no timeout") }
         XCTAssertEqual(expired.code, WajubError.Code.threeDSTimeout)
+        XCTAssertEqual(timeout.controller.lastKnownStatus, .pending, "pending again")
+        XCTAssertTrue(timeout.controller.canCancelPayment)
         XCTAssertGreaterThanOrEqual(timeout.clock.now.timeIntervalSince(Date(timeIntervalSince1970: 1_791_968_400)), 600)
         timeout.controller.hostGone()
     }
