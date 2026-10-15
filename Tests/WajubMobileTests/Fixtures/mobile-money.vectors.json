@@ -66,6 +66,26 @@
       "formatted": "22 50 50 10 20 30 4"
     },
     {
+      "input": "707000000",
+      "country": "CI",
+      "national_digits": "707000000",
+      "valid": true,
+      "detected_operator": "orange",
+      "e164": "+2250707000000",
+      "formatted": "70 70 00 00 0",
+      "why": "typed without its 0: E.164 puts it back"
+    },
+    {
+      "input": "07 07 00 00",
+      "country": "CI",
+      "national_digits": "7070000",
+      "valid": false,
+      "detected_operator": "orange",
+      "e164": "+22507070000",
+      "formatted": "07 07 00 00",
+      "why": "the 8-digit form from before 31 Jan 2021 is no Ivorian number"
+    },
+    {
       "input": "771234567",
       "country": "SN",
       "national_digits": "771234567",
@@ -151,9 +171,58 @@
       "country": "BJ",
       "national_digits": "190123456",
       "valid": true,
-      "detected_operator": null,
-      "e164": "+229190123456",
+      "detected_operator": "mtn",
+      "e164": "+2290190123456",
       "formatted": "01 90 12 34 56"
+    },
+    {
+      "input": "96 12 34 56",
+      "country": "BJ",
+      "national_digits": "196123456",
+      "valid": true,
+      "detected_operator": "mtn",
+      "e164": "+2290196123456",
+      "formatted": "96 12 34 56",
+      "why": "the 8-digit form from before 30 Nov 2024 takes 01 in front"
+    },
+    {
+      "input": "+229 01 95 12 34 56",
+      "country": "BJ",
+      "national_digits": "195123456",
+      "valid": true,
+      "detected_operator": "moov",
+      "e164": "+2290195123456",
+      "formatted": "22 90 19 51 23 45 6"
+    },
+    {
+      "input": "0140123456",
+      "country": "BJ",
+      "national_digits": "140123456",
+      "valid": true,
+      "detected_operator": null,
+      "e164": "+2290140123456",
+      "formatted": "01 40 12 34 56",
+      "why": "Celtiis: no operator listed here"
+    },
+    {
+      "input": "30 00 00 00",
+      "country": "BJ",
+      "national_digits": "30000000",
+      "valid": false,
+      "detected_operator": null,
+      "e164": "+229030000000",
+      "formatted": "30 00 00 00",
+      "why": "01 30 … is no mobile range: not repaired, refused"
+    },
+    {
+      "input": "96",
+      "country": "BJ",
+      "national_digits": "96",
+      "valid": false,
+      "detected_operator": "mtn",
+      "e164": "+229096",
+      "formatted": "96",
+      "why": "as it is typed, the earlier form already names its operator"
     },
     {
       "input": "0812345678",
@@ -271,9 +340,20 @@
       ],
       "selected": "moov",
       "phone": "0190123456",
+      "expected": "operator_mismatch",
+      "detected": "mtn"
+    },
+    {
+      "country": "BJ",
+      "choices": [
+        "mtn",
+        "moov"
+      ],
+      "selected": "mtn",
+      "phone": "0140123456",
       "expected": null,
       "detected": null,
-      "why": "no prefix rules for BJ"
+      "why": "Celtiis has no prefix rule"
     },
     {
       "country": "CM",
@@ -343,6 +423,17 @@
       "phone": "761234567",
       "expected_selection": "orange",
       "why": "detected free is not offered: the default first choice stays"
+    },
+    {
+      "country": "BJ",
+      "choices": [
+        "mtn",
+        "moov"
+      ],
+      "picked_by_hand": null,
+      "phone": "95 12 34 56",
+      "expected_selection": "moov",
+      "why": "the 8-digit form names Moov (01 95)"
     }
   ],
   "operator_hint": [

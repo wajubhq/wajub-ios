@@ -2,7 +2,7 @@
   "schema_version": 1,
   "source": {
     "repository": "checkout.wajub",
-    "commit": "43639cf",
+    "commit": "fc15c2b",
     "files": [
       "src/lib/validation/mobile-money.ts",
       "src/lib/constants/countries.ts",
@@ -12,10 +12,10 @@
   },
   "algorithms": {
     "sanitize": "Keep the characters 0-9 and '+'; then remove every '+'.",
-    "national_digits": "sanitize(input); if the result starts with the country's dial_code digits (without '+'), remove them; then remove every leading '0'.",
-    "validate": "If national_number_length is set: national_digits must have exactly that many digits. Otherwise: sanitize(input) must be 7 to 15 digits.",
-    "detect_operator": "Evaluate prefix_rules in order against national_digits; the first rule with a starts_with entry that national_digits starts with wins. No rule, or no match: null. Wallets held whatever the operator (operator_independent_wallets) are never detected.",
-    "e164": "dial_code + (e164_trunk_zero == 'keep' ? '0' : '') + national_digits",
+    "national_digits": "sanitize(input); if the result starts with the country's dial_code digits (without '+'), remove them; then remove every leading '0'; then, in a country with earlier_number, digits of earlier_number.length that start with one of earlier_number.starts_with take earlier_number.prefix in front (Benin, 8 digits before 30 Nov 2024: '96 12 34 56' -> '196123456').",
+    "validate": "If national_number_length is set: national_digits must have exactly that many digits, and, in a country with earlier_number, start with earlier_number.prefix. Otherwise: sanitize(input) must be 7 to 15 digits.",
+    "detect_operator": "Evaluate prefix_rules in order against national_digits — in a country with earlier_number, digits that do not start with earlier_number.prefix are read with it in front, so a number typed the earlier way names its operator as it is typed ('96' -> '196'); the first rule with a starts_with entry that the digits start with wins. No rule, or no match: null. Wallets held whatever the operator (operator_independent_wallets) are never detected.",
+    "e164": "dial_code + (e164_trunk_zero == 'keep' ? '0' : '') + national_digits. 'keep' marks a plan whose leading 0 is part of the number (Côte d'Ivoire, Benin): national_digits, national_number_length and the prefix rules leave it out, as for every other country, and E.164 puts it back.",
     "format_as_you_type": "Digits only (no '+'), at most 15, grouped by two with single spaces: '671234567' -> '67 12 34 56 7'.",
     "brand_fallback": "When an operator has no usable logo URL, draw a round badge with brand.background, brand.color and brand.mark (else the first 8 alphanumerics of brand.label, upper-cased). No brand entry: background #525252, color #ffffff, label from the channel name."
   },
@@ -38,18 +38,13 @@
   ],
   "errata": [
     {
-      "country": "CI",
-      "field": "e164_trunk_zero",
-      "value": "keep",
-      "web_behaviour": "checkout.wajub drops every leading 0 and sends +225 followed by 9 digits (e.g. 07 01 02 03 04 -> +225701020304).",
-      "why_mobile_differs": "Since 31 Jan 2021 Ivorian numbers have 10 digits whose leading 0 is significant (+225 07 01 02 03 04); api.wajub's sandbox CI prefixes (+22505 MTN, +22507 Orange, +22501 Moov, +22503 Wave, config/sandbox.php:19-25) and libphonenumber both expect it. Detection and the length check stay on national_digits (web parity); only the E.164 sent keeps the 0."
-    },
-    {
-      "country": "BJ",
-      "field": "e164_trunk_zero",
-      "value": "drop",
-      "web_behaviour": "Same as the web. Open question: the web placeholder (0190123456) is Benin's 10-digit plan (since Nov 2024), whose leading 01 the normalisation breaks (+229190123456), while api.wajub's sandbox BJ prefixes (+22990, +22991, +22997) are the old 8-digit plan.",
-      "why_mobile_differs": "It does not, until api.wajub and checkout.wajub agree."
+      "countries": [
+        "CI",
+        "BJ"
+      ],
+      "field": "national_digits",
+      "web_behaviour": "checkout.wajub keeps the 0 the payer typed, and gives it back to a number typed without it only when that makes a mobile number (CI 01, 05, 07; BJ 01 2[5-9], 01 [4-69]): 0303000000 and 0130000000 are accepted, 303000000 and 130000000 refused.",
+      "why_mobile_differs": "national_digits drops every leading 0 (the shared algorithm), so each pair reads the same and both are accepted; api.wajub decides on such a number either way."
     },
     {
       "countries": [
@@ -82,8 +77,24 @@
       "name": "Bénin",
       "dial_code": "+229",
       "dial_code_source": "checkout",
-      "national_number_length": null,
-      "e164_trunk_zero": "drop",
+      "national_number_length": 9,
+      "e164_trunk_zero": "keep",
+      "earlier_number": {
+        "length": 8,
+        "prefix": "1",
+        "starts_with": [
+          "25",
+          "26",
+          "27",
+          "28",
+          "29",
+          "4",
+          "5",
+          "6",
+          "9"
+        ],
+        "source": "ARCEP Bénin: 01 in front of every number since 30 Nov 2024; repaired only onto a mobile range (01 2[5-9], 01 [4-69]), as checkout.wajub does"
+      },
       "placeholder": "0190123456",
       "placeholder_formatted": "01 90 12 34 56",
       "operators": [
@@ -92,7 +103,53 @@
         "ecocash",
         "tmoney"
       ],
-      "prefix_rules": []
+      "prefix_rules": [
+        {
+          "starts_with": [
+            "142",
+            "146",
+            "150",
+            "151",
+            "152",
+            "153",
+            "154",
+            "156",
+            "157",
+            "159",
+            "161",
+            "162",
+            "166",
+            "167",
+            "169",
+            "190",
+            "191",
+            "196",
+            "197"
+          ],
+          "operator": "mtn",
+          "verified": true,
+          "source_pattern": "^01(?:4[26]|5[0-46-79]|6[12679]|9[0167])"
+        },
+        {
+          "starts_with": [
+            "145",
+            "155",
+            "158",
+            "160",
+            "163",
+            "164",
+            "165",
+            "168",
+            "194",
+            "195",
+            "198",
+            "199"
+          ],
+          "operator": "moov",
+          "verified": true,
+          "source_pattern": "^01(?:45|5[58]|6[03-58]|9[4589])"
+        }
+      ]
     },
     "CD": {
       "name": "DR Congo",
@@ -146,7 +203,7 @@
           ],
           "operator": "mtn",
           "verified": true,
-          "source_pattern": "^5"
+          "source_pattern": "^05"
         },
         {
           "starts_with": [
@@ -154,7 +211,7 @@
           ],
           "operator": "orange",
           "verified": true,
-          "source_pattern": "^7"
+          "source_pattern": "^07"
         },
         {
           "starts_with": [
@@ -162,7 +219,7 @@
           ],
           "operator": "moov",
           "verified": true,
-          "source_pattern": "^1"
+          "source_pattern": "^01"
         }
       ]
     },

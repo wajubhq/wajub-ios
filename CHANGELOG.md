@@ -5,6 +5,8 @@
 - Card payments whose provider asks for several confirmation steps in a row (a date of birth then a
   code, a PIN then the bank's page) go through each step in the sheet.
 - Channel and operator logos show as images where Wajub has them; the others keep their brand badge.
+- Benin numbers have ten digits, their leading 0 kept, and MTN and Moov are recognised from the
+  number; an 8-digit number from before the change is read with `01` in front.
 - `PresentOptions.realtime` and `RealtimeOptions` are deprecated: the payment's live updates need no
   setting. Code that sets them still compiles and behaves as before; remove them, as they will go
   in a later major version.

@@ -10,14 +10,25 @@ public struct MobileMoneyData: Sendable {
         public var operatorId: String
     }
 
+    /// The shorter form a country's numbers had before they took a prefix (Benin's 8-digit numbers, which
+    /// take `01` in front): such a number is read with the prefix.
+    public struct EarlierNumber: Sendable {
+        public var length: Int
+        public var prefix: String
+        /// Only numbers on these ranges take the prefix.
+        public var startsWith: [String]
+    }
+
     public struct Country: Sendable {
         public var code: String
         public var name: String
         /// `+237`.
         public var dialCode: String
         public var nationalNumberLength: Int?
-        /// The number keeps its leading 0 after the dial code (Côte d'Ivoire).
+        /// The number keeps its leading 0 after the dial code (Côte d'Ivoire, Benin).
         public var keepsTrunkZero: Bool
+        /// The shorter form numbers had before (Benin), read with its prefix.
+        public var earlierNumber: EarlierNumber?
         public var placeholder: String
         public var placeholderFormatted: String
         public var operators: [String]
@@ -81,10 +92,14 @@ public struct MobileMoneyData: Sendable {
             let rules = (entry["prefix_rules"]?.array ?? []).map {
                 PrefixRule(startsWith: $0["starts_with"]?.strings ?? [], operatorId: $0["operator"]?.string ?? "")
             }
+            var earlier: EarlierNumber?
+            if let value = entry["earlier_number"], let length = value["length"]?.int, let prefix = value["prefix"]?.nonEmptyString {
+                earlier = EarlierNumber(length: length, prefix: prefix, startsWith: value["starts_with"]?.strings ?? [])
+            }
             countries[code.uppercased()] = Country(
                 code: code.uppercased(), name: entry["name"]?.string ?? code, dialCode: entry["dial_code"]?.string ?? "",
                 nationalNumberLength: entry["national_number_length"]?.int,
-                keepsTrunkZero: entry["e164_trunk_zero"]?.string == "keep",
+                keepsTrunkZero: entry["e164_trunk_zero"]?.string == "keep", earlierNumber: earlier,
                 placeholder: entry["placeholder"]?.string ?? "", placeholderFormatted: entry["placeholder_formatted"]?.string ?? "",
                 operators: entry["operators"]?.strings ?? [], prefixRules: rules)
         }
@@ -113,28 +128,42 @@ public struct MobileMoneyData: Sendable {
         String(input.unicodeScalars.filter { ("0"..."9").contains($0) }.map(Character.init))
     }
 
-    /// `sanitize`, minus a leading dial code, minus every leading `0`.
+    /// `sanitize`, minus a leading dial code, minus every leading `0`; a number in its earlier, shorter
+    /// form on one of its ranges takes the country's prefix (Benin: `96 12 34 56` → `196123456`).
     public func nationalDigits(_ input: String, country: String) -> String {
+        let entry = countries[country.uppercased()]
         var digits = sanitize(input)
-        if let dial = countries[country.uppercased()]?.dialDigits, !dial.isEmpty, digits.hasPrefix(dial) {
+        if let dial = entry?.dialDigits, !dial.isEmpty, digits.hasPrefix(dial) {
             digits.removeFirst(dial.count)
         }
         while digits.hasPrefix("0") { digits.removeFirst() }
+        if let earlier = entry?.earlierNumber, digits.count == earlier.length,
+           earlier.startsWith.contains(where: { digits.hasPrefix($0) }) {
+            digits = earlier.prefix + digits
+        }
         return digits
     }
 
-    /// The country's exact national length when it has one, else 7 to 15 digits.
+    /// The country's exact national length when it has one (starting with the prefix of its earlier
+    /// numbers, in a country that has one), else 7 to 15 digits.
     public func isValid(_ input: String, country: String) -> Bool {
-        if let length = countries[country.uppercased()]?.nationalNumberLength {
-            return nationalDigits(input, country: country).count == length
+        let entry = countries[country.uppercased()]
+        if let length = entry?.nationalNumberLength {
+            let national = nationalDigits(input, country: country)
+            guard national.count == length else { return false }
+            if let earlier = entry?.earlierNumber { return national.hasPrefix(earlier.prefix) }
+            return true
         }
         return looseLength.contains(sanitize(input).count)
     }
 
-    /// The first prefix rule the national digits start with; operator-independent wallets are never detected.
+    /// The first prefix rule the national digits start with (read with the prefix of the country's
+    /// earlier numbers while they are typed the earlier way); operator-independent wallets are never detected.
     public func detectOperator(_ input: String, country: String) -> String? {
-        let national = nationalDigits(input, country: country)
-        guard !national.isEmpty, let rules = countries[country.uppercased()]?.prefixRules else { return nil }
+        var national = nationalDigits(input, country: country)
+        let entry = countries[country.uppercased()]
+        guard !national.isEmpty, let rules = entry?.prefixRules else { return nil }
+        if let earlier = entry?.earlierNumber, !national.hasPrefix(earlier.prefix) { national = earlier.prefix + national }
         for rule in rules where rule.startsWith.contains(where: { national.hasPrefix($0) }) {
             return operatorIndependentWallets.contains(rule.operatorId) ? nil : rule.operatorId
         }
