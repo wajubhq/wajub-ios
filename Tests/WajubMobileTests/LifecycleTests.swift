@@ -175,6 +175,36 @@ final class LifecycleTests: XCTestCase {
         XCTAssertEqual(failed.recorder.errors.map(\.code), [WajubError.Code.paymentFailed])
     }
 
+    /// CN-04 handles a refused cancel
+    @MainActor func test_CN_04_handlesACancelRefusedWhileThePaymentIsBeingPaid() async {
+        // 409: an attempt is under way, or part of the payment was paid. Never `cancelled`: the status
+        // decides, here a payment still being paid.
+        let partial: FakeTransport.Reply = .json(200, ["transaction": ["reference": "trx", "status": "partial"]])
+        for (fixture, status) in [("cancel-409-payment-in-progress", FakeTransport.Reply.fixture("status-processing")),
+                                  ("cancel-409-payment-partly-paid", partial)] {
+            for asked in [true, false] {
+                let harness = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
+                harness.transport.answer(fixture)
+                harness.transport.on("GET", "/pay/status", status)
+                let controller = await harness.start()
+                if asked { controller.cancelPayment() } else { controller.dismiss() }
+                await waitUntil("closed \(fixture)") { controller.result != nil }
+                XCTAssertEqual(controller.result?.status, "processing", "\(fixture) asked: \(asked)")
+                XCTAssertTrue(harness.recorder.cancels.isEmpty, fixture)
+                XCTAssertEqual(harness.transport.requests("GET", "/pay/status").count, 1, "the status re-read")
+            }
+        }
+        // Paid meanwhile: the success screen, after "Cancel payment".
+        let paid = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
+        paid.transport.answer("cancel-409-payment-in-progress", "status-succeeded")
+        let controller = await paid.start()
+        controller.cancelPayment()
+        await waitUntil("success") { controller.state == .success }
+        XCTAssertNil(controller.result)
+        controller.close()
+        XCTAssertEqual(controller.result?.status, "complete")
+    }
+
     /// ST-02 fires callbacks in order
     @MainActor func test_ST_02_ignoresAnswersThatArriveAfterAnOutcome() async {
         // The status says paid while the OTP verification is still running; then the verification answers.

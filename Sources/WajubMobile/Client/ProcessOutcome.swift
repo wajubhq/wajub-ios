@@ -79,6 +79,19 @@ struct ConfirmStep: Equatable, Sendable {
     var kind: ConfirmStepKind
     var id: String
     var hint: String?
+
+    /// Where the OTP was sent: the masked number or address only (two comma-separated), `nil` when the
+    /// provider names none. An older answer could carry the provider's whole sentence ("Please enter
+    /// the OTP sent to 080******78"): only its contact is kept, never the sentence.
+    static func otpContact(_ raw: String?) -> String? {
+        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+        let parts = raw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        if parts.allSatisfy({ !$0.isEmpty && !$0.contains(" ") }) { return raw }
+        let contacts = raw.split(whereSeparator: { $0 == " " || $0 == "," })
+            .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: ".:;!?()")) }
+            .filter { token in token.contains("*") || token.contains("@") || token.filter(\.isNumber).count >= 4 }
+        return contacts.isEmpty ? nil : contacts.joined(separator: ", ")
+    }
 }
 
 /// How a payment answer is handled (README §9): decided on the HTTP status, `action` and
@@ -131,7 +144,8 @@ enum PaymentAnswer: Sendable {
             guard let kind = ConfirmStepKind(action: action) else { return .unsupportedAction(response) }
             let body = answer.body ?? .null
             guard let id = body[kind.idKey]?.nonEmptyString else { return .unsupportedAction(response) }
-            return .step(ConfirmStep(kind: kind, id: id, hint: body[kind.hintKey]?.nonEmptyString), response)
+            let hint = body[kind.hintKey]?.nonEmptyString
+            return .step(ConfirmStep(kind: kind, id: id, hint: kind == .otp ? ConfirmStep.otpContact(hint) : hint), response)
         }
     }
 }

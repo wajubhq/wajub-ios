@@ -49,6 +49,6 @@
     },
     "action": "confirm_otp",
     "otp_id": "prc_7hQm2LxV9pR4sT1wYb3N",
-    "otp_masked_contact": "Please enter the OTP sent to 080******78"
+    "otp_masked_contact": "080******78"
   }
 }

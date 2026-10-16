@@ -44,6 +44,36 @@ final class ConfirmationTests: XCTestCase {
         }
     }
 
+    /// CF-01 opens each confirmation step
+    @MainActor func test_CF_01_showsTheOTPContactOnly() async {
+        // The masked contact as given; none when it is empty; never the provider's sentence.
+        let cases: [(JSONValue, String?)] = [
+            ("+234******5678", "+234******5678"), ("080******78, a***@example.com", "080******78, a***@example.com"),
+            ("", nil), (.null, nil),
+            ("Please enter the OTP sent to 080******78", "080******78"), ("Please enter the OTP we sent you", nil),
+        ]
+        for (contact, expected) in cases {
+            let harness = Harness(session: "session-cm-aggregate", config: "sdk-config-card-kkiapay")
+            harness.transport.on("POST", "/pay/process", .json(202, Fixtures.body("process-requires-otp").setting(["otp_masked_contact"], to: contact)))
+            harness.transport.answer("status-processing")
+            let controller = await harness.start()
+            controller.selectMethod("card")
+            controller.submitCard()
+            await waitUntil("otp") { controller.state == .otpRequired }
+            guard case .step(let step) = controller.screen else { return XCTFail("no step") }
+            XCTAssertEqual(step.hint, expected, "\(contact)")
+            controller.hostGone()
+        }
+        // The chained OTP's contact, recaptured from the API.
+        guard case .step(let chained, _) = PaymentAnswer.classify(
+            APIAnswer(status: 200, body: Fixtures.body("birthday-verify-chained-otp")), mobileMoney: false, allowsClientSession: false)
+        else { return XCTFail("not a step") }
+        XCTAssertEqual(chained.hint, "080******78")
+        XCTAssertEqual(WajubStrings(.en).codeSentTo("080******78"), "Sent to 080******78")
+        XCTAssertEqual(WajubStrings(.en).codeSent, "A code was sent to you.")
+        XCTAssertEqual(WajubStrings(.fr).codeSent, "Un code vous a été envoyé.")
+    }
+
     /// CF-02 reads the transaction after a step
     @MainActor func test_CF_02_readsTheTransactionAfterAStep() async {
         // A step the provider settles at once is paid (2.1); one still `processing` (2.0) is watched.

@@ -150,6 +150,8 @@ public struct WajubStrings: Sendable {
         }
     }
     public func codeSentTo(_ contact: String) -> String { fill(t("Sent to {contact}", "Envoyé au {contact}"), ["contact": contact]) }
+    /// The OTP screen's line when the provider does not say where the code went.
+    public var codeSent: String { t("A code was sent to you.", "Un code vous a été envoyé.") }
     public var code: String { t("Code", "Code") }
     public var pin: String { t("PIN", "Code PIN") }
     public var birthday: String { t("Date of birth", "Date de naissance") }

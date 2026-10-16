@@ -137,7 +137,8 @@ extension CheckoutController {
             guard let self else { return }
             let answer = try? await self.client.send(.cancel)
             guard self.result == nil else { return }
-            if let answer, answer.status == 400 {
+            // Refused (400, or 409 while the payment is being paid or partly paid): the status decides.
+            if let answer, answer.status == 400 || answer.status == 409 {
                 await self.resolveRefusedCancel(reason: reason)
                 // The sheet stayed open (paid, or a payment still running): later closes are ordinary.
                 self.cancelTask = nil

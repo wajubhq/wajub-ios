@@ -8,7 +8,7 @@ final class SpecSyncTests: XCTestCase {
         let root = Fixtures.packageRoot
         let manifest = try String(contentsOf: root.appendingPathComponent("Tests/WajubMobileTests/Fixtures/spec.sha256"), encoding: .utf8)
         let lines = manifest.split(separator: "\n").filter { !$0.isEmpty }
-        XCTAssertEqual(lines.count, 99, "97 fixtures, the vectors and the data file")
+        XCTAssertEqual(lines.count, 101, "99 fixtures, the vectors and the data file")
         for line in lines {
             let parts = line.split(separator: " ", omittingEmptySubsequences: true)
             XCTAssertEqual(parts.count, 2, String(line))

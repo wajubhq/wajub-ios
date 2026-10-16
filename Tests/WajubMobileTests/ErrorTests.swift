@@ -32,6 +32,8 @@ final class ErrorTests: XCTestCase {
         "birthday-verify-422-format": ("validation_error", .invalidRequestError, true, nil, "birthday"),
         "broadcasting-auth-403": ("merchant_restricted", .paymentError, false, nil, nil),
         "cancel-400-not-cancellable": ("not_processable", .invalidRequestError, false, nil, nil),
+        "cancel-409-payment-in-progress": ("payment_in_progress", .invalidRequestError, false, nil, nil),
+        "cancel-409-payment-partly-paid": ("payment_partly_paid", .invalidRequestError, false, nil, nil),
         "client-session-422-sandbox": ("client_session_unavailable", .invalidRequestError, false, nil, "request"),
         "client-session-422-security-check-failed": ("security_check_failed", .invalidRequestError, true, nil, "request"),
         "process-422-security-check-failed": ("security_check_failed", .invalidRequestError, true, nil, "request"),

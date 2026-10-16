@@ -114,6 +114,10 @@ struct StepView: View {
                 Text(step.kind == .otp ? strings.codeSentTo(hint) : hint)
                     .font(style.hint)
                     .foregroundColor(style.textSecondary)
+            } else if step.kind == .otp {
+                Text(strings.codeSent)
+                    .font(style.hint)
+                    .foregroundColor(style.textSecondary)
             }
             fields
             if let error = step.error {
