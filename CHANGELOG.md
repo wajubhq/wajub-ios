@@ -24,7 +24,9 @@
 - `MobileMoneyData.nationalDigits(_:country:)` now keeps the 0 where it is part of the number, and
   `Country.keepsTrunkZero` is deprecated: to send a number, use `e164(_:country:)`.
 - A cancel that Wajub refuses because the payment is being paid, or is partly paid, resolves with
-  the payment's status instead of `cancelled`; the code screen shows only where the code was sent.
+  the payment's status instead of `cancelled`, and `WajubSession.cancel()` throws
+  `payment_in_progress` or `payment_partly_paid` with a message for the payer; the code screen shows
+  only where the code was sent.
 - `PresentOptions.realtime` and `RealtimeOptions` are deprecated: the payment's live updates need no
   setting. Code that sets them still compiles and behaves as before; remove them, as they will go
   in a later major version.

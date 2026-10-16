@@ -100,6 +100,13 @@ enum ErrorCatalogue {
         "channel_not_accepted": E(type: .paymentError, retryable: true,
                                   en: "This payment method is not available for this payment.",
                                   fr: "Ce moyen de paiement n'est pas disponible pour ce paiement."),
+        // The two refusals of /pay/cancel (a payment_in_progress on /pay/process is no error: the sheet waits).
+        "payment_partly_paid": E(type: .invalidRequestError, retryable: false,
+                                 en: "Part of this payment has already been paid, so it can't be cancelled.",
+                                 fr: "Une partie de ce paiement a déjà été réglée : il ne peut plus être annulé."),
+        "payment_in_progress": E(type: .invalidRequestError, retryable: false,
+                                 en: "This payment is being paid and can't be cancelled now.",
+                                 fr: "Ce paiement est en cours de règlement et ne peut pas être annulé maintenant."),
         "payment_failed": E(type: .paymentError, retryable: false,
                             en: "Your payment could not be processed.", fr: "Votre paiement n'a pas pu être traité."),
         "payment_attempt_ended": E(type: .paymentError, retryable: true,
@@ -179,6 +186,8 @@ enum ErrorCatalogue {
 enum ErrorPhase: Sendable {
     case loading
     case payment
+    /// `/pay/cancel`: a payment on its way (`payment_in_progress`) is a refusal to cancel there.
+    case cancel
 }
 
 extension WajubError {
@@ -251,7 +260,9 @@ extension WajubError {
         let type: WajubErrorType
         let retryable: Bool
         let message: String
-        if let entry = ErrorCatalogue.entries[code] {
+        // payment_in_progress has its catalogue text on /pay/cancel only; elsewhere it is passed through.
+        let catalogued = code == Code.paymentInProgress && phase != .cancel ? nil : ErrorCatalogue.entries[code]
+        if let entry = catalogued {
             type = entry.type
             retryable = entry.retryable
             if code == Code.validationError, language == .en, let apiMessage {

@@ -73,7 +73,8 @@ final class ErrorTests: XCTestCase {
             var headers = Fixtures.headers(name)
             headers["X-Request-Id"] = "req_\(name)"
             let answer = APIAnswer(status: Fixtures.status(name), headers: headers, body: Fixtures.body(name))
-            let error = WajubError.from(answer, phase: path == "/pay/session" ? .loading : .payment, language: .en)
+            let phase: ErrorPhase = path == "/pay/session" ? .loading : path == "/pay/cancel" ? .cancel : .payment
+            let error = WajubError.from(answer, phase: phase, language: .en)
             let (code, type, retryable, decline, param) = try XCTUnwrap(expectations[name])
             XCTAssertEqual(error.code, code, name)
             XCTAssertEqual(error.type, type, name)
@@ -116,6 +117,47 @@ final class ErrorTests: XCTestCase {
         }
     }
 
+    /// ER-02 maps every error fixture
+    @MainActor func test_ER_02_mapsTheCancelRefusals() async throws {
+        // An app that cancels through WajubSession gets the catalogue's refusals.
+        let cases: [(String, String, String, String)] = [
+            ("cancel-409-payment-partly-paid", WajubError.Code.paymentPartlyPaid,
+             "Part of this payment has already been paid, so it can't be cancelled.",
+             "Une partie de ce paiement a déjà été réglée : il ne peut plus être annulé."),
+            ("cancel-409-payment-in-progress", WajubError.Code.paymentInProgress,
+             "This payment is being paid and can't be cancelled now.",
+             "Ce paiement est en cours de règlement et ne peut pas être annulé maintenant."),
+        ]
+        for (fixture, code, english, french) in cases {
+            let harness = Harness(session: "session-cm-aggregate")
+            harness.transport.answer(fixture)
+            do {
+                _ = try await harness.client.cancel()
+                XCTFail("\(fixture): not refused")
+            } catch let error as WajubError {
+                XCTAssertEqual(error.code, code, fixture)
+                XCTAssertEqual(error.type, .invalidRequestError, fixture)
+                XCTAssertFalse(error.retryable, fixture)
+                XCTAssertEqual(error.message, english, fixture)
+                XCTAssertEqual(error.httpStatus, 409, fixture)
+            }
+            let answer = APIAnswer(status: 409, body: Fixtures.body(fixture))
+            XCTAssertEqual(WajubError.from(answer, phase: .cancel, language: .fr).message, french, fixture)
+            XCTAssertEqual(WajubStrings(.fr).errorMessage(code), french, fixture)
+        }
+
+        // payment_in_progress on /pay/process is unchanged: no cancel text, and the payment is waited for.
+        let process = APIAnswer(status: 409, body: Fixtures.body("process-409-payment-in-progress"))
+        let mapped = WajubError.from(process, phase: .payment, language: .en)
+        XCTAssertEqual(mapped.code, WajubError.Code.paymentInProgress)
+        XCTAssertNotEqual(mapped.message, "This payment is being paid and can't be cancelled now.")
+        let low = Harness(session: "session-cm-aggregate")
+        low.transport.answer("process-409-payment-in-progress")
+        guard case .processing(_, _, .pending) = await low.client.process(channel: "cm.mobile", data: ["phone": "+237670000000"]) else {
+            return XCTFail("not processing")
+        }
+    }
+
     /// ER-03 localises error messages
     func test_ER_03_localisesErrorMessages() {
         let decline = APIAnswer(status: 402, body: Fixtures.body("process-failed-402"))
@@ -153,7 +195,7 @@ final class ErrorTests: XCTestCase {
                         "redirect_unavailable", "invalid_otp", "otp_expired", "invalid_pin", "pin_expired", "phone_expired",
                         "invalid_birthday", "birthday_expired", "invalid_address", "address_expired", "max_attempts_exceeded",
                         "invalid_code", "3ds_failed", "3ds_rejected", "3ds_cancelled", "3ds_timeout", "client_session_unavailable",
-                        "client_session_expired", "sheet_already_presented"]
+                        "client_session_expired", "sheet_already_presented", "payment_partly_paid", "payment_in_progress"]
         XCTAssertEqual(Set(contract), Set(ErrorCatalogue.entries.keys))
 
         // The sheet's own texts exist in both languages.

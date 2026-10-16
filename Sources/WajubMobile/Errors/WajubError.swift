@@ -142,7 +142,10 @@ extension WajubError {
         public static let clientSessionUnavailable = "client_session_unavailable"
         public static let clientSessionExpired = "client_session_expired"
         public static let sheetAlreadyPresented = "sheet_already_presented"
-        /// Not an error for the payer: the SDK waits for the charge in flight.
+        /// Paying: a charge is already under way, which the sheet waits for (no error for the payer).
+        /// `WajubSession.cancel()`: the payment is being paid and can't be cancelled now.
         public static let paymentInProgress = "payment_in_progress"
+        /// `WajubSession.cancel()`: part of the payment is paid, so it can't be cancelled.
+        public static let paymentPartlyPaid = "payment_partly_paid"
     }
 }

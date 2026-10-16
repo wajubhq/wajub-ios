@@ -96,8 +96,10 @@ public final class WajubSession: @unchecked Sendable {
     }
 
     /// Cancels the payment for good.
+    /// Throws `payment_in_progress` while the payment is being paid, and `payment_partly_paid` when part
+    /// of it is paid: neither can be cancelled.
     public func cancel() async throws -> CancelResponse {
-        let answer = try await call(.cancel, phase: .payment)
+        let answer = try await call(.cancel, phase: .cancel)
         return CancelResponse(json: answer.body ?? .null)
     }
 
