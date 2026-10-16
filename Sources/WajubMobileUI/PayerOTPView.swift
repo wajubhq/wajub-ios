@@ -11,7 +11,7 @@ struct PayerOTPView: View {
     let style: SheetStyle
     let screen: PayerOTPScreen
     @State private var code = ""
-    @State private var copied = false
+    @State private var copyFeedback = CopyFeedback()
 
     var body: some View {
         let controller = model.controller
@@ -31,12 +31,12 @@ struct PayerOTPView: View {
                             .foregroundColor(style.text)
                             .textSelection(.enabled)
                         Spacer()
-                        LinkButton(title: copied ? strings.copied : strings.copy, style: style) {
+                        LinkButton(title: copyFeedback.isShown ? strings.copied : strings.copy, style: style) {
                             UIPasteboard.general.string = ussdCode
-                            copied = true
+                            let copy = copyFeedback.copy()
                             Task { @MainActor in
-                                try? await Task.sleep(nanoseconds: 2_000_000_000)
-                                copied = false
+                                try? await Task.sleep(nanoseconds: UInt64(CopyFeedback.seconds * 1_000_000_000))
+                                copyFeedback.expire(copy)
                             }
                         }
                     }
@@ -75,8 +75,13 @@ struct PayerOTPView: View {
                            contentType: .oneTimeCode)
             }
             if let message = screen.message {
-                let attempts = screen.attemptsRemaining.map { " " + strings.payerOTPAttemptsRemaining($0) } ?? ""
-                BannerView(message: message + attempts, foreground: style.danger, background: style.dangerBackground, style: style)
+                BannerView(message: message, foreground: style.danger, background: style.dangerBackground, style: style)
+            }
+            // The tries left stay once the refusal goes away.
+            if let attempts = screen.attemptsRemaining {
+                Text(strings.payerOTPAttemptsRemaining(attempts))
+                    .font(style.hint)
+                    .foregroundColor(style.textSecondary)
             }
             PrimaryButton(title: strings.payerOTPSubmit, style: style, busy: controller.isPaying, enabled: !controller.isCancelling) {
                 controller.submitPayerOTP(code)
@@ -90,7 +95,12 @@ struct PayerOTPView: View {
         .onChange(of: code) { typed in
             let digits = String(Digits.ascii(typed).unicodeScalars.filter { ("0"..."9").contains($0) }
                 .map(Character.init).prefix(screen.lengthRange.upperBound))
-            if digits != typed { code = digits }
+            if digits != typed {
+                code = digits
+            } else if !digits.isEmpty {
+                // The payer types again: the refusal goes away (the field emptied by one does not count).
+                controller.payerOTPEdited()
+            }
         }
         // An answer refusing the code empties the field; a code failing the local check stays.
         .onChange(of: screen.refusals) { _ in code = "" }

@@ -56,21 +56,16 @@ struct ApprovalView: View {
     let approval: ApprovalScreen
 
     var body: some View {
-        let strings = model.strings
+        // After the payer's own code: no phone line, and nothing left to approve on the phone.
+        let texts = approval.texts(model.strings, amount: model.controller.formattedAmount)
         VStack(spacing: style.gapRow) {
-            if approval.payerOTPReceived {
-                OutcomeHeader(symbol: "iphone.radiowaves.left.and.right", tint: style.primary, title: strings.payerOTPApprovalMessage,
-                              message: nil, style: style)
-            } else {
-                OutcomeHeader(symbol: "iphone.radiowaves.left.and.right", tint: style.primary, title: strings.approvalTitle,
-                              message: strings.approvalBody(amount: model.controller.formattedAmount, phone: approval.phone), style: style)
-            }
+            OutcomeHeader(symbol: "iphone.radiowaves.left.and.right", tint: style.primary, title: texts.title,
+                          message: texts.phoneLine, style: style)
             if let instruction = approval.instruction {
                 InstructionView(instruction: instruction, model: model, style: style)
             }
-            // After the payer's own code, nothing is left to approve on the phone.
-            if !approval.payerOTPReceived {
-                WaitingRow(text: strings.waitingForApproval, style: style)
+            if let waiting = texts.waiting {
+                WaitingRow(text: waiting, style: style)
             }
         }
     }

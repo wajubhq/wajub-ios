@@ -281,7 +281,7 @@ public enum StepVerifyResponse: Equatable, Sendable {
         if json["status"]?.string == "failed" || json["error"]?.object != nil {
             self = .failed(code: json["error"]?["code"]?.nonEmptyString ?? "request_failed",
                            message: json["error"]?["message"]?.nonEmptyString,
-                           attemptsRemaining: json["attempts_remaining"]?.int)
+                           attemptsRemaining: json["attempts_remaining"]?.int.map { max($0, 0) })
         } else {
             self = .success(transaction: SessionTransaction.optional(json["transaction"]))
         }
@@ -358,7 +358,7 @@ public struct APIErrorBody: Equatable, Sendable {
             nestedError = NestedError(code: nested["code"]?.nonEmptyString, message: nested["message"]?.nonEmptyString,
                                       retryable: nested["retryable"]?.bool)
         }
-        attemptsRemaining = json["attempts_remaining"]?.int
+        attemptsRemaining = json["attempts_remaining"]?.int.map { max($0, 0) }
     }
 
     /// A refused step's code, message, and whether it can be tried again.

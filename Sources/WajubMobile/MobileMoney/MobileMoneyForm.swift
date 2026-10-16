@@ -168,9 +168,13 @@ public struct MobileMoneyForm: Equatable, Sendable {
     /// Operators refused for this payment (too many codes), by channel and operator, with the reason.
     private var exhausted: [String: String] = [:]
 
-    /// Too many codes refused on this operator: it stays listed, disabled, and the selection moves on.
-    mutating func exhaust(channelSlug: String, operatorId: String, reason: String) {
-        exhausted["\(channelSlug)|\(operatorId)"] = reason
+    /// Too many codes refused on this operator (the selected one on that channel, else the channel's
+    /// own): it stays listed, disabled, and the selection moves to the first choice still offered.
+    mutating func exhaust(channelSlug: String, operatorId: String?, reason: String) {
+        let onChannel = choices.filter { $0.channelSlug == channelSlug }
+        guard let choice = onChannel.first(where: { $0.id == operatorId }) ?? onChannel.first(where: { !$0.isAggregateMember })
+        else { return }
+        exhausted["\(channelSlug)|\(choice.id)"] = reason
         pickedByHand = false
         refreshChoices()
     }

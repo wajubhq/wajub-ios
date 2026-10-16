@@ -217,7 +217,8 @@ extension WajubError {
     static func stepFailure(code: String, apiMessage: String?, attemptsRemaining: Int?, _ language: WajubLanguage) -> WajubError {
         var error: WajubError
         if ErrorCatalogue.entries[code] != nil {
-            error = catalogue(code, language, values: ["n": String(attemptsRemaining ?? 0)])
+            // Without the count, the sentence giving it is left out.
+            error = catalogue(code, language, values: attemptsRemaining.map { ["n": String($0)] } ?? [:])
         } else {
             error = WajubError(type: .invalidRequestError, code: code,
                                message: language == .en ? (apiMessage ?? ErrorCatalogue.entries[Code.validationError]!.en)

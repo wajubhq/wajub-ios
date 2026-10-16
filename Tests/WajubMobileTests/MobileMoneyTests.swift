@@ -114,6 +114,32 @@ final class MobileMoneyTests: XCTestCase {
                        "MTN MoMo can't be used for this amount (Maximum XOF 1,000). Choose another operator or payment method.")
     }
 
+    /// MM-03 matches the preselection vectors
+    func test_MM_03_neverSelectsADisabledOperator() throws {
+        var form = MobileMoneyForm(channels: Fixtures.session("session-ci-xof-wallets").channels.filter(\.isMobileMoney),
+                                   config: Fixtures.config("sdk-config-ci-wallets"), language: .en, amount: 15000,
+                                   options: MobileMoneyOptions(), geoCountry: "CI")
+        XCTAssertEqual(form.selection, "mtn")
+        // The selection disabled: the first choice still offered, by MM-03's rule.
+        form.exhaust(channelSlug: "ci.mtn", operatorId: "mtn", reason: "No more codes.")
+        XCTAssertEqual(form.selection, "moov")
+        XCTAssertEqual(form.choices.first?.unavailableReason, "No more codes.")
+        // Neither detection nor a pick selects it.
+        form.setPhone("0501020304")
+        XCTAssertEqual(form.detectedOperator, "mtn")
+        XCTAssertEqual(form.selection, "moov")
+        form.pick("mtn")
+        XCTAssertEqual(form.selection, "moov")
+        XCTAssertNotEqual(form.badgeChoice?.id, "mtn")
+        // Down to the wallet that takes any number, then none: no selection, and Pay disabled.
+        form.exhaust(channelSlug: "ci.moov", operatorId: nil, reason: "No more codes.")
+        form.exhaust(channelSlug: "ci.orange", operatorId: nil, reason: "No more codes.")
+        XCTAssertEqual(form.selection, "wave")
+        form.exhaust(channelSlug: "ci.wave", operatorId: "wave", reason: "No more codes.")
+        XCTAssertNil(form.selection)
+        XCTAssertTrue(form.hasNoOperator)
+    }
+
     /// MM-04 lists aggregate operators
     func test_MM_04_listsAggregateOperators() {
         let aggregate = makeForm("session-cm-aggregate")

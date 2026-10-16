@@ -137,6 +137,13 @@ extension CheckoutController {
         attempt?.payerOTP = screen.instructions
     }
 
+    /// The payer typed in the code field: a refusal shown goes away, the tries left stay.
+    package func payerOTPEdited() {
+        guard payerOTP?.message != nil else { return }
+        payerOTP?.message = nil
+        update()
+    }
+
     /// "Use another payment method" on the code screen: back to the Mobile Money form.
     public func leavePayerOTP() {
         guard result == nil, !isWorking, payerOTP != nil else { return }

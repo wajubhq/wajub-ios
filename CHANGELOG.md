@@ -15,6 +15,8 @@
   `CheckoutController.payableAmount` is what the payer's current choice costs, and an operator that
   refused too many of the payer's codes has `OperatorChoice.isAvailable` false and an
   `unavailableReason`.
+- A refused confirmation code no longer says "0 attempts left" when Wajub does not give the tries
+  left: the message then leaves the count out.
 - Card payments whose provider asks for several confirmation steps in a row (a date of birth then a
   code, a PIN then the bank's page) go through each step in the sheet.
 - Channel and operator logos show as images where Wajub has them; the others keep their brand badge.

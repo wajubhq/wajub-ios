@@ -38,6 +38,22 @@ public struct ApprovalScreen: Equatable, Sendable {
     public var instruction: String?
     /// The payer's own code was received: say so instead of asking to approve on the phone.
     public var payerOTPReceived = false
+
+    /// What the screen says: its title, the line naming the amount and the phone the request went to,
+    /// and the line waiting on the phone. After the payer's own code, only that it was received.
+    package struct Texts: Equatable, Sendable {
+        package var title: String
+        package var phoneLine: String?
+        package var waiting: String?
+    }
+
+    package func texts(_ strings: WajubStrings, amount: String) -> Texts {
+        if payerOTPReceived {
+            return Texts(title: strings.payerOTPApprovalMessage, phoneLine: nil, waiting: nil)
+        }
+        return Texts(title: strings.approvalTitle, phoneLine: strings.approvalBody(amount: amount, phone: phone),
+                     waiting: strings.waitingForApproval)
+    }
 }
 
 /// The code the payer generates in their operator's menu, for the exact amount, before paying.

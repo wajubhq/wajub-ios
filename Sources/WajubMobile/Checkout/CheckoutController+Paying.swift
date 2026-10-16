@@ -90,8 +90,12 @@ extension CheckoutController {
             // Nothing was charged: the payer generates a code in the operator's menu, then pays again.
             if let transaction = response.transaction {
                 lastTransaction = transaction
-                // A refused code is the baseline: a later status still carrying it is not a new refusal.
-                if let code = transaction.errorCode { lastErrorCode = code }
+                // The answer's refusal is the baseline, none when it carries none: a later status still
+                // carrying it is not a new refusal.
+                if transaction.hasErrorCodeKey {
+                    lastErrorCode = transaction.errorCode
+                    lastErrorCodeKnown = true
+                }
             }
             pendingAgain()
             let length = instructions.otpLength
@@ -217,14 +221,17 @@ extension CheckoutController {
     func backToMobileMoneyForm(_ error: WajubError, reportsError: Bool = true) {
         stopWatching()
         pendingAgain()
-        if error.code == WajubError.Code.otpAttemptsExceeded, let channel = payerOTPRequest?.channel ?? attempt.map(\.channel),
-           let operatorId = mobileMoney?.selection {
-            // That channel is not offered again for this payment.
-            mobileMoney?.exhaust(channelSlug: channel, operatorId: operatorId, reason: error.message)
-        }
+        let channel = payerOTPRequest?.channel ?? attempt.map(\.channel)
         isBusy = false
+        // The payment's form, as on a first opening, when the sheet has none (reopened on an approval
+        // under way).
         if currentMethod?.kind != .mobileMoney, let method = methods.first(where: { $0.kind == .mobileMoney }) {
             openForm(method)
+        }
+        if error.code == WajubError.Code.otpAttemptsExceeded, let channel {
+            // That channel is not offered again for this payment.
+            let selection = mobileMoney?.selection
+            mobileMoney?.exhaust(channelSlug: channel, operatorId: selection, reason: error.message)
         }
         payerOTP = nil
         payerOTPRequest = nil

@@ -459,4 +459,150 @@ final class PayerTests: XCTestCase {
         XCTAssertNil(choices.first { $0.id == "mtn" }?.limit)
         XCTAssertEqual(choices.first { $0.id == "orange" }?.limit, .maximum(10300))
     }
+
+    // MARK: Parity (README §6.7)
+
+    /// MM-13 handles refused payer codes
+    @MainActor func test_MM_13_takesACodeAnswerWithoutRefusalAsTheBaseline() async {
+        // The payment carried a refusal; the answer asking for the code carries none: that is the baseline now.
+        let body = Fixtures.body("session-payer-otp-announced").setting(["channels", "0", "payer_otp"], to: nil)
+            .setting(["transaction", "error_code"], to: "invalid_otp")
+        let harness = Harness(config: "sdk-config-sandbox")
+        harness.transport.on("GET", "/pay/session", .json(200, body))
+        harness.transport.on("POST", "/pay/process", replies: [.fixture("process-payer-otp-required"), .failure(.timeout)])
+        harness.transport.answer("status-processing")
+        let controller = await harness.start()
+        XCTAssertEqual(controller.lastErrorCode, WajubError.Code.invalidOTP)
+        controller.selectMethod("mobile_money")
+        controller.setPhone("70000000")
+        controller.submitMobileMoney()
+        await waitUntil("code screen") { controller.payerOTP != nil }
+        XCTAssertNil(controller.lastErrorCode, "no refusal on the answer: none is the baseline")
+        XCTAssertTrue(controller.lastErrorCodeKnown)
+
+        // The code goes unanswered; a refusal of it is then news: the code screen again.
+        harness.transport.on("GET", "/pay/status", .fixture("status-pending-payer-otp-refused"))
+        controller.submitPayerOTP("111111")
+        await harness.drive(until: "the code screen again") { controller.stateName == CheckoutController.payerOTPRequiredName }
+        XCTAssertEqual(controller.payerOTP?.message, controller.strings.payerOTPRefused)
+        XCTAssertNotEqual(controller.state, .failed)
+        controller.hostGone()
+    }
+
+    /// The BF session reopened on an approval under way, watching `status`.
+    @MainActor private func reopenedHarness(status: JSONValue) async -> Harness {
+        let body = Fixtures.body("session-payer-otp-announced")
+            .setting(["transaction", "status"], to: "processing")
+            .setting(["transaction", "processing_context"], to: ["channel_slug": "bf.orange", "is_mobile_money": true])
+        let harness = Harness(config: "sdk-config-sandbox")
+        harness.transport.on("GET", "/pay/session", .json(200, body))
+        harness.transport.on("GET", "/pay/status", .json(200, status))
+        let controller = await harness.start()
+        XCTAssertEqual(controller.state, .approvalRequired)
+        XCTAssertNil(controller.mobileMoney, "never built yet")
+        await harness.drive(until: "back on the form") { controller.screen == .form }
+        return harness
+    }
+
+    /// MM-13 handles refused payer codes
+    @MainActor func test_MM_13_bringsBackThePaymentsFormOnAReopenedSheet() async {
+        // A refusal no code of this sheet led to: the payment's form, as on a first opening.
+        let refused = await reopenedHarness(status: Fixtures.body("status-pending-payer-otp-refused"))
+        let controller = refused.controller!
+        XCTAssertEqual(controller.state, .collectingDetails)
+        XCTAssertEqual(controller.currentMethod?.kind, .mobileMoney)
+        XCTAssertEqual(controller.mobileMoney?.country, "BF")
+        XCTAssertEqual(controller.mobileMoney?.choices.map(\.id), ["orange"])
+        XCTAssertEqual(controller.mobileMoney?.selection, "orange")
+        XCTAssertEqual(controller.banner?.message, controller.strings.payerOTPRefused)
+        XCTAssertTrue(refused.recorder.errors.isEmpty, "no onError")
+        XCTAssertFalse(refused.recorder.states.contains(.failed))
+        controller.setPhone("70000000")
+        controller.submitMobileMoney()
+        XCTAssertNotNil(controller.payerOTP, "Pay works: the announced code step opens")
+        controller.hostGone()
+
+        // Too many codes refused: the same form, that operator disabled with the reason, no selection, no Pay.
+        let exceeded = await reopenedHarness(status: Fixtures.body("status-pending-payer-otp-refused")
+            .setting(["transaction", "error_code"], to: "otp_attempts_exceeded"))
+        let other = exceeded.controller!
+        let reason = WajubError.catalogue(WajubError.Code.otpAttemptsExceeded, other.language).message
+        XCTAssertEqual(other.mobileMoney?.country, "BF")
+        XCTAssertEqual(other.mobileMoney?.choices.map(\.unavailableReason), [reason])
+        XCTAssertNil(other.mobileMoney?.selection)
+        XCTAssertEqual(other.mobileMoney?.hasNoOperator, true, "Pay is disabled")
+        XCTAssertEqual(other.banner?.message, reason)
+        XCTAssertEqual(exceeded.recorder.errors.map(\.code), [WajubError.Code.otpAttemptsExceeded])
+        other.setPhone("70000000")
+        other.submitMobileMoney()
+        XCTAssertNil(other.payerOTP)
+        XCTAssertTrue(exceeded.processBodies().isEmpty)
+        other.hostGone()
+    }
+
+    /// MM-13 handles refused payer codes
+    @MainActor func test_MM_13_clearsARefusalOnceThePayerTypesAgain() async {
+        let harness = await askedHarness(.fixture("process-payer-otp-required"), .fixture("process-payer-otp-refused"))
+        let controller = harness.controller!
+        controller.submitPayerOTP("654321")
+        await waitUntil("refused") { controller.payerOTP?.message != nil }
+        XCTAssertEqual(controller.payerOTP?.attemptsRemaining, 2)
+        controller.payerOTPEdited()
+        XCTAssertNil(controller.payerOTP?.message, "the refusal goes away")
+        XCTAssertEqual(controller.payerOTP?.attemptsRemaining, 2, "the tries left stay")
+        XCTAssertEqual(controller.stateName, CheckoutController.payerOTPRequiredName)
+        controller.submitPayerOTP("12")
+        XCTAssertNotNil(controller.payerOTP?.message)
+        controller.payerOTPEdited()
+        XCTAssertNil(controller.payerOTP?.message)
+        XCTAssertEqual(controller.payerOTP?.attemptsRemaining, 2)
+        controller.hostGone()
+
+        // A negative count is none left, wherever the SDK gives it.
+        let base = Fixtures.body("process-payer-otp-required")["payer_otp"]!
+        XCTAssertEqual(PayerOTPInstructions(json: base.setting(["attempts_remaining"], to: -1)).attemptsRemaining, 0)
+        let step = StepVerifyResponse(json: ["status": "failed", "error": ["code": "invalid_otp"], "attempts_remaining": -1])
+        XCTAssertEqual(step, .failed(code: "invalid_otp", message: nil, attemptsRemaining: 0))
+        XCTAssertEqual(APIErrorBody(json: ["attempts_remaining": -3]).attemptsRemaining, 0)
+        // Without the count, the sentence giving it is left out.
+        XCTAssertEqual(WajubError.stepFailure(code: "invalid_otp", apiMessage: nil, attemptsRemaining: nil, .en).message, "Incorrect code.")
+        XCTAssertEqual(WajubError.stepFailure(code: "invalid_otp", apiMessage: nil, attemptsRemaining: 2, .en).message,
+                       "Incorrect code. 2 attempts left.")
+    }
+
+    /// MM-13 handles refused payer codes
+    func test_MM_13_showsCopiedForTwoSecondsFromTheLastCopy() {
+        XCTAssertEqual(CopyFeedback.seconds, 2)
+        var feedback = CopyFeedback()
+        XCTAssertFalse(feedback.isShown)
+        let first = feedback.copy()
+        XCTAssertTrue(feedback.isShown)
+        let second = feedback.copy()
+        feedback.expire(first)
+        XCTAssertTrue(feedback.isShown, "2 s after the first copy, the second one still shows Copied")
+        feedback.expire(second)
+        XCTAssertFalse(feedback.isShown, "Copy again 2 s after the last copy")
+        XCTAssertEqual(WajubStrings(.en).copied, "Copied")
+        XCTAssertEqual(WajubStrings(.en).copy, "Copy")
+    }
+
+    /// MM-13 handles refused payer codes
+    @MainActor func test_MM_13_showsNoPhoneLineOnTheApprovalAfterACode() async {
+        let harness = await askedHarness(.fixture("process-payer-otp-required"), .fixture("process-payer-otp-accepted-sandbox"))
+        let controller = harness.controller!
+        controller.submitPayerOTP("123456")
+        await waitUntil("approval") { controller.state == .approvalRequired }
+        guard case .approval(let approval) = controller.screen else { return XCTFail("no approval") }
+        let texts = approval.texts(controller.strings, amount: controller.formattedAmount)
+        XCTAssertEqual(texts.title, "Code reçu. Votre opérateur traite le paiement, cela peut prendre quelques instants.")
+        XCTAssertNil(texts.phoneLine, "no phone line")
+        XCTAssertNil(texts.waiting, "nothing to approve on the phone")
+        controller.hostGone()
+
+        // Without a code, the screen names the phone and waits on it.
+        let push = ApprovalScreen(phone: "+22670000000", instruction: nil).texts(WajubStrings(.en), amount: "XOF 1,000")
+        XCTAssertEqual(push.title, "Approve the payment on your phone")
+        XCTAssertEqual(push.phoneLine, "A request for XOF 1,000 was sent to +22670000000.")
+        XCTAssertEqual(push.waiting, "Waiting for your approval…")
+    }
 }
