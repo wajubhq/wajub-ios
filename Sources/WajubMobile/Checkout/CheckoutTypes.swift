@@ -105,7 +105,7 @@ public struct StateChangeEvent: Equatable, Sendable {
     public var state: CheckoutState
     /// `mobile_money`, `card`, `wallet` or `unknown`.
     public var method: String?
-    /// The state's name, as the web checkout names it: `state`'s, or `PAYER_OTP_REQUIRED`.
+    /// The state's name: `state`'s, or `PAYER_OTP_REQUIRED` while the payer generates their operator's code.
     public var name: String = ""
 }
 

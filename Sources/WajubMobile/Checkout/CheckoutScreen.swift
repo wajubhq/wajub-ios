@@ -79,8 +79,13 @@ public struct PayerOTPScreen: Equatable, Sendable {
         instructions.otpLength.map { $0...$0 } ?? 4...8
     }
 
-    /// The exact amount to type, as the operator wants it.
-    public var exactAmount: String { "\(instructions.amount) \(instructions.currency)" }
+    /// The exact amount to type, as the operator wants it; `nil` when none was given.
+    public var exactAmount: String? {
+        guard !instructions.amount.isEmpty else { return nil }
+        return instructions.currency.isEmpty ? instructions.amount : "\(instructions.amount) \(instructions.currency)"
+    }
+    /// Increases with each answer that refused a code, so a drawn field can empty itself then.
+    public var refusals = 0
 
     init(instructions: PayerOTPInstructions, language: WajubLanguage, sandbox: Bool) {
         self.instructions = instructions
@@ -97,8 +102,10 @@ public struct PayerOTPScreen: Equatable, Sendable {
         let steps = instructions.steps[language.rawValue] ?? instructions.steps["en"] ?? instructions.steps["fr"] ?? []
         guard !steps.isEmpty else {
             return WajubStrings(language).payerOTPGenericSteps.map { template in
-                line(template, ussdCode: instructions.ussdCode, amount: instructions.amount, currency: instructions.currency,
-                     genericAmount: true) ?? StepLine(parts: [.text(template)])
+                // Without an amount, the step says it without one.
+                let bare = template.replacingOccurrences(of: " : {amount}", with: "").replacingOccurrences(of: ": {amount}", with: "")
+                return line(template, ussdCode: instructions.ussdCode, amount: instructions.amount, currency: instructions.currency,
+                            genericAmount: true) ?? StepLine(parts: [.text(bare)])
             }
         }
         return steps.map { step in
@@ -121,7 +128,7 @@ public struct PayerOTPScreen: Equatable, Sendable {
                 parts.append(.ussdCode(ussdCode))
             case "amount":
                 guard !amount.isEmpty else { return nil }
-                parts.append(.amount(genericAmount ? "\(amount) \(currency)" : amount))
+                parts.append(.amount(genericAmount && !currency.isEmpty ? "\(amount) \(currency)" : amount))
             case "currency":
                 guard !currency.isEmpty else { return nil }
                 parts.append(.text(currency))

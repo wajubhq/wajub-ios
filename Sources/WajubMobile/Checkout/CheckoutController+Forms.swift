@@ -107,6 +107,8 @@ extension CheckoutController {
         var screen = PayerOTPScreen(instructions: instructions, language: language, sandbox: isSandbox)
         screen.message = message
         screen.attemptsRemaining = attemptsRemaining
+        // An answer refusing a code empties the field.
+        screen.refusals = (payerOTP?.refusals ?? 0) + (message == nil ? 0 : 1)
         payerOTP = screen
         banner = nil
         fieldErrors = [:]
@@ -121,8 +123,8 @@ extension CheckoutController {
         let code = Digits.ascii(code).trimmingCharacters(in: .whitespaces)
         guard Digits.isASCIIDigits(code), screen.lengthRange.contains(code.count) else {
             let range = screen.lengthRange
+            // The tries left stay shown.
             payerOTP?.message = strings.payerOTPLength(screen.instructions.otpLength, min: range.lowerBound, max: range.upperBound)
-            payerOTP?.attemptsRemaining = nil
             update()
             return
         }

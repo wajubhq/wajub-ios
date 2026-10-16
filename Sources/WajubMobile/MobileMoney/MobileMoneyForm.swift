@@ -23,6 +23,11 @@ public struct OperatorChoice: Equatable, Sendable, Identifiable {
     public var limit: AmountLimit?
     /// What the payer pays with this operator, fee included, when it depends on the operator.
     public var amountTotal: Double? = nil
+    /// Why the operator cannot be picked for this payment any more (too many codes refused), shown with it.
+    public var unavailableReason: String? = nil
+
+    /// The payer can pick it: within its limits, and not refused for this payment.
+    public var isAvailable: Bool { limit == nil && unavailableReason == nil }
 }
 
 /// How the payer chooses the operator.
@@ -96,7 +101,7 @@ public struct MobileMoneyForm: Equatable, Sendable {
         return channels.first { $0.slug == choice.channelSlug && !$0.isAggregate }?.payerOTP
     }
     /// `operator_unavailable`: no operator the payer can pick for the country; Pay is disabled.
-    public var hasNoOperator: Bool { !choices.contains { $0.limit == nil } }
+    public var hasNoOperator: Bool { !choices.contains { $0.isAvailable } }
 
     /// In `detect` mode the list stays hidden until the number (≥ 6 digits) names no offered operator,
     /// an operator-independent wallet is offered while the number names one, or the payer opens it.
@@ -109,7 +114,7 @@ public struct MobileMoneyForm: Equatable, Sendable {
         let detected = detectedOperator
         let detectedOffered = detected.map(enabled.contains) ?? false
         if national.count >= 6 && !detectedOffered && enabled.count > 1 { return true }
-        if detected != nil && choices.contains(where: { $0.isOperatorIndependent && $0.limit == nil }) { return true }
+        if detected != nil && choices.contains(where: { $0.isOperatorIndependent && $0.isAvailable }) { return true }
         return false
     }
 
@@ -122,7 +127,7 @@ public struct MobileMoneyForm: Equatable, Sendable {
 
     /// In `detect` mode, the operator shown inside the field: the detected one, or the only one the payer can use.
     public var badgeChoice: OperatorChoice? {
-        let enabled = choices.filter { $0.limit == nil }
+        let enabled = choices.filter { $0.isAvailable }
         if let detected = detectedOperator, let choice = enabled.first(where: { $0.id == detected }) { return choice }
         return enabled.count == 1 ? enabled.first : nil
     }
@@ -146,7 +151,7 @@ public struct MobileMoneyForm: Equatable, Sendable {
 
     /// A pick by hand is never overridden by detection. An operator out of its limits cannot be picked.
     mutating func pick(_ id: String) {
-        guard choices.contains(where: { $0.id == id && $0.limit == nil }) else { return }
+        guard choices.contains(where: { $0.id == id && $0.isAvailable }) else { return }
         selection = id
         pickedByHand = true
     }
@@ -157,11 +162,24 @@ public struct MobileMoneyForm: Equatable, Sendable {
 
     /// The ids the payer can pick (operators out of their amount limits are shown disabled).
     private var enabledIds: [String] {
-        choices.filter { $0.limit == nil }.map(\.id)
+        choices.filter { $0.isAvailable }.map(\.id)
+    }
+
+    /// Operators refused for this payment (too many codes), by channel and operator, with the reason.
+    private var exhausted: [String: String] = [:]
+
+    /// Too many codes refused on this operator: it stays listed, disabled, and the selection moves on.
+    mutating func exhaust(channelSlug: String, operatorId: String, reason: String) {
+        exhausted["\(channelSlug)|\(operatorId)"] = reason
+        pickedByHand = false
+        refreshChoices()
     }
 
     private mutating func refreshChoices() {
         choices = MobileMoneyForm.choices(channels: channels, country: country, config: config, language: language, amount: amount)
+        for index in choices.indices {
+            choices[index].unavailableReason = exhausted["\(choices[index].channelSlug)|\(choices[index].id)"]
+        }
         selection = MobileMoneyForm.initialSelection(choiceIds: enabledIds, data: data)
         selection = MobileMoneyForm.preselect(current: selection, pickedByHand: false, detected: detectedOperator, choiceIds: enabledIds)
     }

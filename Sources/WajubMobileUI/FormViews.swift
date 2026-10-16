@@ -207,7 +207,11 @@ struct MobileMoneyFormView: View {
                             Text(choice.label)
                                 .font(style.body)
                                 .foregroundColor(style.text)
-                            if let limit = choice.limit {
+                            if let reason = choice.unavailableReason {
+                                Text(reason)
+                                    .font(style.hint)
+                                    .foregroundColor(style.textSecondary)
+                            } else if let limit = choice.limit {
                                 Text(limitText(limit))
                                     .font(style.hint)
                                     .foregroundColor(style.textSecondary)
@@ -223,10 +227,10 @@ struct MobileMoneyFormView: View {
                     .overlay(RoundedRectangle(cornerRadius: style.radius)
                         .strokeBorder(selected ? style.primary : style.inputBorder, lineWidth: selected ? 2 : 1))
                     .contentShape(Rectangle())
-                    .opacity(choice.limit == nil ? 1 : 0.5)
+                    .opacity(choice.isAvailable ? 1 : 0.5)
                 }
                 .buttonStyle(.plain)
-                .disabled(choice.limit != nil)
+                .disabled(!choice.isAvailable)
                 .accessibilityAddTraits(selected ? .isSelected : [])
             }
             if let error = controller.fieldErrors["data.operator"] {

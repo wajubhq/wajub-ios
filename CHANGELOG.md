@@ -8,6 +8,13 @@
   Faso) are supported: the sheet guides the payer through it. `onStateChange` names that step
   `PAYER_OTP_REQUIRED` in `StateChangeEvent.name` while `state` stays `.collectingDetails`, so a
   switch over `CheckoutState` keeps compiling; your own screens draw `CheckoutController.payerOTP`.
+- For your own screens and calls: `ProcessAction.payerOTP` with `RequiredAction.payerOTP` (a
+  `PayerOTPInstructions`) says the operator wants the payer's own code, to send as `otp` in `data`
+  when paying again, and `SessionChannel.payerOTP` announces it before the payer pays;
+  `SessionChannel` and `ChannelOperator` carry `feeAmount` and `amountTotal`,
+  `CheckoutController.payableAmount` is what the payer's current choice costs, and an operator that
+  refused too many of the payer's codes has `OperatorChoice.isAvailable` false and an
+  `unavailableReason`.
 - Card payments whose provider asks for several confirmation steps in a row (a date of birth then a
   code, a PIN then the bank's page) go through each step in the sheet.
 - Channel and operator logos show as images where Wajub has them; the others keep their brand badge.

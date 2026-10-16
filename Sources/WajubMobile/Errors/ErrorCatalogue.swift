@@ -257,8 +257,10 @@ extension WajubError {
 
         let retryAfter = body?.retryAfter ?? answer.header("Retry-After").flatMap { Int($0.trimmingCharacters(in: .whitespaces)) }
         let apiMessage = body?.nestedError?.message ?? body?.message
-        let values = ["seconds": String(retryAfter ?? 0), "block_reference": body?.blockReference ?? "",
-                      "n": String(body?.attemptsRemaining ?? 0)]
+        var values: [String: String] = [:]
+        if let retryAfter { values["seconds"] = String(retryAfter) }
+        if let reference = body?.blockReference { values["block_reference"] = reference }
+        if let remaining = body?.attemptsRemaining { values["n"] = String(remaining) }
 
         let type: WajubErrorType
         let retryable: Bool

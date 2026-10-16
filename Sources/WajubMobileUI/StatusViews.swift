@@ -68,7 +68,10 @@ struct ApprovalView: View {
             if let instruction = approval.instruction {
                 InstructionView(instruction: instruction, model: model, style: style)
             }
-            WaitingRow(text: strings.waitingForApproval, style: style)
+            // After the payer's own code, nothing is left to approve on the phone.
+            if !approval.payerOTPReceived {
+                WaitingRow(text: strings.waitingForApproval, style: style)
+            }
         }
     }
 }

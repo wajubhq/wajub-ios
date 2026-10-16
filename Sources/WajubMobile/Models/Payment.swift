@@ -182,19 +182,24 @@ public struct PayerOTPInstructions: Equatable, Sendable {
     public init(json: JSONValue) {
         channel = json["channel"]?.string ?? ""
         ussdCode = json["ussd_code"]?.nonEmptyString
-        otpLength = json["otp_length"]?.int
-        amount = json["amount"]?.string ?? ""
+        // Outside 1 to 12 digits: no length given.
+        otpLength = json["otp_length"]?.int.flatMap { (1...12).contains($0) ? $0 : nil }
+        amount = json["amount"]?.string?.trimmingCharacters(in: .whitespaces) ?? ""
         currency = json["currency"]?.string ?? ""
         var steps: [String: [Step]] = [:]
         for (language, list) in json["steps"]?.object ?? [:] {
-            steps[language] = (list.array ?? []).compactMap { entry in
+            let parsed = (list.array ?? []).compactMap { entry -> Step? in
+                // A step given as a plain string is its text.
+                if let text = entry.nonEmptyString { return Step(text: text, template: nil) }
                 guard let text = entry["text"]?.nonEmptyString ?? entry["template"]?.nonEmptyString else { return nil }
                 return Step(text: text, template: entry["template"]?.nonEmptyString)
             }
+            // An empty list counts as none, so another language applies.
+            if !parsed.isEmpty { steps[language] = parsed }
         }
         self.steps = steps
         reason = json["reason"]?.nonEmptyString
-        attemptsRemaining = json["attempts_remaining"]?.int
+        attemptsRemaining = json["attempts_remaining"]?.int.map { max($0, 0) }
     }
 }
 

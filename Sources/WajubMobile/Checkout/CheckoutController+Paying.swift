@@ -66,8 +66,11 @@ extension CheckoutController {
             if answer.status >= 500 { self.attempt?.unansweredSince = lastSent.value ?? self.clock.uptime }
             if !securityRetry, self.isSecurityRefusal(answer) {
                 await self.renewAltcha()
+                // The same code (if any) goes again, and the same flow follows.
+                let codeStep = self.attempt?.payerOTP
                 self.pay(channel: channel, data: data.filter { $0.key != "altcha" && $0.key != "_client" }, family: family,
                          mobileMoney: mobileMoney, phone: phone, securityRetry: true)
+                self.attempt?.payerOTP = codeStep
                 return
             }
             if securityRetry, self.isSecurityRefusal(answer) {
@@ -85,7 +88,11 @@ extension CheckoutController {
         let classified = PaymentAnswer.classify(answer, mobileMoney: mobileMoney, allowsClientSession: clientSession)
         if case .payerOTP(let instructions, let response) = classified {
             // Nothing was charged: the payer generates a code in the operator's menu, then pays again.
-            if let transaction = response.transaction { lastTransaction = transaction }
+            if let transaction = response.transaction {
+                lastTransaction = transaction
+                // A refused code is the baseline: a later status still carrying it is not a new refusal.
+                if let code = transaction.errorCode { lastErrorCode = code }
+            }
             pendingAgain()
             let length = instructions.otpLength
             switch instructions.reason {
@@ -138,7 +145,12 @@ extension CheckoutController {
         case .payerOTP:
             break
         case .unsupportedAction(let response):
-            paymentStarted(response.transaction)
+            if response.action == .payerOTP {
+                // The code step without its instructions: nothing was charged.
+                pendingAgain()
+            } else {
+                paymentStarted(response.transaction)
+            }
             fail(.catalogue(WajubError.Code.unsupportedAction, language))
         case .unconfirmed:
             // A 2xx that says nothing of the payment: watch, as for a request without an answer.
@@ -202,17 +214,30 @@ extension CheckoutController {
 
     /// Too many of the payer's codes refused on this channel: back to the Mobile Money form with that
     /// error; the payment is still payable another way.
-    func backToMobileMoneyForm(_ error: WajubError) {
+    func backToMobileMoneyForm(_ error: WajubError, reportsError: Bool = true) {
         stopWatching()
         pendingAgain()
+        if error.code == WajubError.Code.otpAttemptsExceeded, let channel = payerOTPRequest?.channel ?? attempt.map(\.channel),
+           let operatorId = mobileMoney?.selection {
+            // That channel is not offered again for this payment.
+            mobileMoney?.exhaust(channelSlug: channel, operatorId: operatorId, reason: error.message)
+        }
         isBusy = false
+        if currentMethod?.kind != .mobileMoney, let method = methods.first(where: { $0.kind == .mobileMoney }) {
+            openForm(method)
+        }
         payerOTP = nil
         payerOTPRequest = nil
         fieldErrors = [:]
         banner = error
-        screen = .form
+        screen = currentMethod?.kind == .mobileMoney ? .form : .methods
         update()
-        emit { try self.options.callbacks.onError?(error) }
+        if reportsError { emit { try self.options.callbacks.onError?(error) } }
+    }
+
+    /// The operator did not take a code: the refused text, as a form banner.
+    var payerOTPRefusal: WajubError {
+        WajubError(type: .paymentError, code: WajubError.Code.invalidOTP, message: strings.payerOTPRefused, retryable: true)
     }
 
     /// A 422: back to the form with field errors (README §9.1).

@@ -169,8 +169,14 @@ public final class CheckoutController {
     /// channel's price when the payer's fee depends on it; else the payment's total.
     public var payableAmount: Double {
         guard let transaction = session?.transaction else { return 0 }
-        if attempt?.started == true, let charged = lastTransaction { return charged.amountTotal }
-        if case .methods = screen { return transaction.amountTotal }
+        switch screen {
+        case .methods:
+            return transaction.amountTotal
+        case .form:
+            break
+        default:
+            if attempt?.started == true, let charged = lastTransaction { return charged.amountTotal }
+        }
         if let method = currentMethod {
             if method.kind == .mobileMoney, let total = mobileMoney?.selectedChoice?.amountTotal { return total }
             if method.kind != .mobileMoney, let total = method.channels.first?.amountTotal { return total }
@@ -452,8 +458,8 @@ public final class CheckoutController {
         onChange?()
     }
 
-    /// The state's name, as the web checkout names it: `state`'s, or `PAYER_OTP_REQUIRED` while the payer
-    /// generates the code their operator asks for.
+    /// The state's name: `state`'s, or `PAYER_OTP_REQUIRED` while the payer generates the code their
+    /// operator asks for.
     public var stateName: String? {
         guard let state else { return nil }
         if case .form = screen, payerOTP != nil, !isBusy { return CheckoutController.payerOTPRequiredName }

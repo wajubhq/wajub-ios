@@ -301,4 +301,162 @@ final class PayerTests: XCTestCase {
         XCTAssertEqual(WajubStrings(.fr).payerOTPSandboxHint(PayerOTPScreen.sandboxCode),
                        "Mode test : saisissez le code 123456. Tout autre code est refusé.")
     }
+
+    // MARK: Edge cases (README §6.7)
+
+    /// MM-13 handles refused payer codes
+    @MainActor func test_MM_13_takesARefusedCodeAsTheBaseline() async {
+        // After a refused code, a status still carrying that refusal is not a new one.
+        let harness = await askedHarness(.fixture("process-payer-otp-required"), .fixture("process-payer-otp-refused"),
+                                         .failure(.timeout))
+        let controller = harness.controller!
+        controller.submitPayerOTP("654321")
+        await waitUntil("refused") { controller.payerOTP?.attemptsRemaining == 2 }
+        XCTAssertEqual(controller.lastErrorCode, WajubError.Code.invalidOTP)
+        harness.transport.on("GET", "/pay/status", .fixture("status-pending-payer-otp-refused"))
+        controller.submitPayerOTP("111111")
+        await harness.drive(until: "pending") { controller.state == .pending }
+        await harness.advance(by: 5)
+        XCTAssertEqual(controller.state, .pending, "the same refusal is not news")
+        XCTAssertNotEqual(controller.stateName, CheckoutController.payerOTPRequiredName)
+        XCTAssertTrue(harness.recorder.errors.isEmpty)
+        controller.hostGone()
+    }
+
+    /// MM-13 handles refused payer codes
+    @MainActor func test_MM_13_handlesARefusalNoCodeOfThisSheetLedTo() async {
+        // A code sent elsewhere was refused: back to the form with the refused text, not FAILED, no onError.
+        let harness = await Harness.mobileMoney(answers: "process-processing-mobile-money-sandbox")
+        harness.transport.on("GET", "/pay/status", .fixture("status-pending-payer-otp-refused"))
+        harness.controller.submitMobileMoney()
+        await waitUntil("approval") { harness.controller.state == .approvalRequired }
+        await harness.advance(by: 5)
+        XCTAssertEqual(harness.controller.state, .collectingDetails)
+        XCTAssertEqual(harness.controller.banner?.message, harness.controller.strings.payerOTPRefused)
+        XCTAssertTrue(harness.recorder.errors.isEmpty)
+        XCTAssertFalse(harness.controller.banner?.message.contains("{") ?? true)
+        harness.controller.hostGone()
+
+        // No catalogue message ever shows a raw placeholder.
+        for language in WajubLanguage.allCases {
+            for code in ErrorCatalogue.entries.keys {
+                let message = WajubError.catalogue(code, language).message
+                XCTAssertFalse(message.contains("{"), "\(code) \(language): \(message)")
+                XCTAssertFalse(message.isEmpty, code)
+            }
+        }
+        let update = StatusUpdate(status: .pending, errorCode: WajubError.Code.invalidOTP)
+        XCTAssertEqual(harness.controller.attemptEndedError(update).message.contains("{"), false)
+    }
+
+    /// MM-13 handles refused payer codes
+    @MainActor func test_MM_13_doesNotOfferAnExhaustedChannelAgain() async {
+        let harness = await askedHarness(.fixture("process-payer-otp-required"), .fixture("process-402-payer-otp-attempts-exceeded"))
+        let controller = harness.controller!
+        controller.submitPayerOTP("654323")
+        await waitUntil("back on the form") { controller.banner != nil }
+        let choice = controller.mobileMoney?.choices.first { $0.channelSlug == "bf.orange" }
+        XCTAssertEqual(choice?.isAvailable, false, "shown disabled")
+        XCTAssertEqual(choice?.unavailableReason, controller.banner?.message)
+        XCTAssertNotEqual(controller.mobileMoney?.selection, choice?.id, "the selection moves off it")
+        // Pay never reopens the code screen there.
+        controller.submitMobileMoney()
+        await settle()
+        XCTAssertNil(controller.payerOTP)
+        XCTAssertEqual(harness.processBodies().count, 2)
+        controller.hostGone()
+    }
+
+    /// MM-13 handles refused payer codes
+    @MainActor func test_MM_13_handlesMissingFieldsAndSteps() async {
+        // payer_otp without its object: unsupported_action, and nothing charged.
+        let missing = await Harness.mobileMoney()
+        missing.transport.on("POST", "/pay/process", .json(202, Fixtures.body("process-payer-otp-required").setting(["payer_otp"], to: nil)))
+        missing.controller.submitMobileMoney()
+        await waitUntil("failed") { missing.controller.state == .failed }
+        guard case .failed(let error) = missing.controller.screen else { return XCTFail("not failed") }
+        XCTAssertEqual(error.code, WajubError.Code.unsupportedAction)
+        XCTAssertTrue(missing.recorder.started.isEmpty)
+        missing.controller.hostGone()
+
+        // No amount: no amount box, and the generic step without it.
+        let base = Fixtures.body("process-payer-otp-required")["payer_otp"]!
+        let noAmount = PayerOTPInstructions(json: base.setting(["amount"], to: "").setting(["steps"], to: [:]))
+        let english = PayerOTPScreen(instructions: noAmount, language: .en, sandbox: false)
+        XCTAssertNil(english.exactAmount)
+        XCTAssertEqual(english.steps[1].text, "Generate a payment code for the exact amount.")
+        XCTAssertEqual(PayerOTPScreen(instructions: noAmount, language: .fr, sandbox: false).steps[1].text,
+                       "Générez un code de paiement pour le montant exact.")
+        XCTAssertTrue(english.steps.allSatisfy { !$0.text.contains("{") && !$0.text.contains(" XOF") })
+
+        // A plain-string step is its text; an empty list counts as none.
+        let steps = PayerOTPInstructions(json: base.setting(["steps"], to: ["fr": [], "en": ["Dial the code.", ["text": "Enter it."]]]))
+        XCTAssertNil(steps.steps["fr"])
+        XCTAssertEqual(PayerOTPScreen(instructions: steps, language: .fr, sandbox: false).steps.map(\.text), ["Dial the code.", "Enter it."])
+
+        // An otp_length outside 1 to 12: none; a negative attempts_remaining: none left.
+        for length: JSONValue in [-1, 0, 13] {
+            let instructions = PayerOTPInstructions(json: base.setting(["otp_length"], to: length))
+            XCTAssertNil(instructions.otpLength, "\(length)")
+            XCTAssertEqual(PayerOTPScreen(instructions: instructions, language: .en, sandbox: false).lengthRange, 4...8)
+        }
+        let negative = PayerOTPInstructions(json: base.setting(["attempts_remaining"], to: -2))
+        XCTAssertEqual(negative.attemptsRemaining, 0)
+        XCTAssertEqual(WajubStrings(.en).payerOTPAttemptsRemaining(negative.attemptsRemaining ?? 0), "No tries left.")
+    }
+
+    /// MM-13 handles refused payer codes
+    @MainActor func test_MM_13_keepsTheTriesLeftAndTheCodeStepOnARetry() async throws {
+        // The tries left stay after a code fails the local check.
+        let refused = await askedHarness(.fixture("process-payer-otp-required"), .fixture("process-payer-otp-refused"))
+        refused.controller.submitPayerOTP("654321")
+        await waitUntil("refused") { refused.controller.payerOTP?.attemptsRemaining == 2 }
+        let refusals = refused.controller.payerOTP?.refusals
+        refused.controller.submitPayerOTP("12")
+        XCTAssertEqual(refused.controller.payerOTP?.attemptsRemaining, 2)
+        XCTAssertEqual(refused.controller.payerOTP?.refusals, refusals, "the local check does not empty the field")
+        refused.controller.hostGone()
+
+        // A security retry of the code keeps the code step: the same code, the same flow.
+        let retried = await askedHarness(.fixture("process-payer-otp-required"), .fixture("process-422-security-check-failed"),
+                                         .fixture("process-payer-otp-accepted-sandbox"))
+        retried.controller.submitPayerOTP("123456")
+        await waitUntil("approval") { retried.controller.state == .approvalRequired }
+        XCTAssertEqual(retried.processBodies().count, 3)
+        XCTAssertEqual(retried.processBodies()[2]["data"]?["otp"]?.string, "123456")
+        guard case .approval(let approval) = retried.controller.screen else { return XCTFail("no approval") }
+        XCTAssertTrue(approval.payerOTPReceived)
+        retried.transport.on("GET", "/pay/status", .fixture("status-pending-payer-otp-refused"))
+        await retried.advance(by: 5)
+        XCTAssertNotNil(retried.controller.payerOTP, "still the code step's flow")
+        retried.controller.hostGone()
+    }
+
+    /// CH-07 shows what the payer pays on the chosen channel
+    @MainActor func test_CH_07_showsTheSelectionsAmountAgainAfterAnAttemptEnded() async throws {
+        let harness = Harness(session: "session-payer-fee-per-channel", config: "sdk-config-sandbox")
+        harness.transport.answer("process-payer-fee-on-channel-sandbox")
+        harness.transport.on("GET", "/pay/status", .fixture("status-pending-attempt-refused"))
+        let controller = await harness.start()
+        controller.selectMethod("mobile_money")
+        controller.setPhone("690000000")
+        controller.submitMobileMoney()
+        await waitUntil("approval") { controller.state == .approvalRequired }
+        XCTAssertEqual(controller.payableAmount, 10450)
+        await harness.advance(by: 5)
+        XCTAssertEqual(controller.state, .failed)
+        controller.tryAgain()
+        controller.pickOperator("mtn")
+        XCTAssertEqual(controller.payableAmount, 10200, "the selection's again, not the ended attempt's")
+        controller.backToMethods()
+        XCTAssertEqual(controller.payableAmount, 10200)
+        controller.hostGone()
+
+        // A limit is compared with the chosen operator's price.
+        let session = try SessionResponse(json: Fixtures.body("session-payer-fee-per-channel").setting(["channels", "0", "max_amount"], to: 10300))
+        let choices = MobileMoneyForm.choices(channels: session.channels, country: "CM", config: Fixtures.config("sdk-config-sandbox"),
+                                              language: .en, amount: session.transaction.amountTotal)
+        XCTAssertNil(choices.first { $0.id == "mtn" }?.limit)
+        XCTAssertEqual(choices.first { $0.id == "orange" }?.limit, .maximum(10300))
+    }
 }

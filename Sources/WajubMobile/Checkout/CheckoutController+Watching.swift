@@ -71,18 +71,21 @@ extension CheckoutController {
             // a refused try is not the end yet. On a client session the provider's own verdict comes
             // from /pay/client-session/complete first: a payment made on the page always wins over a
             // refused try, which stands only once /complete has answered without a verdict.
-            if let instructions = attempt?.payerOTP, let code = update.errorCode {
-                // The operator refused the payer's code after the charge went on.
-                if code == WajubError.Code.invalidOTP {
+            if update.errorCode == WajubError.Code.invalidOTP {
+                if let instructions = attempt?.payerOTP {
+                    // The operator refused the payer's code after the charge went on.
                     stopWatching()
                     pendingAgain()
                     showPayerOTP(instructions, message: strings.payerOTPRefused)
-                    return
+                } else {
+                    // A code sent elsewhere was refused: back to the form, with the refused text.
+                    backToMobileMoneyForm(payerOTPRefusal, reportsError: false)
                 }
-                if code == WajubError.Code.otpAttemptsExceeded {
-                    backToMobileMoneyForm(.catalogue(code, language))
-                    return
-                }
+                return
+            }
+            if update.errorCode == WajubError.Code.otpAttemptsExceeded {
+                backToMobileMoneyForm(.catalogue(WajubError.Code.otpAttemptsExceeded, language))
+                return
             }
             if isBrowserOpen && browserInApp { return }
             if let attempt, attempt.clientSession != nil, !attempt.clientSessionAnswered {
@@ -123,7 +126,7 @@ extension CheckoutController {
         guard let code = update.errorCode else { return .catalogue(WajubError.Code.paymentAttemptEnded, language) }
         var error: WajubError
         if let entry = ErrorCatalogue.entries[code] {
-            error = WajubError(type: entry.type, code: code, message: entry.message(language), retryable: true)
+            error = WajubError(type: entry.type, code: code, message: fill(entry.message(language), [:]), retryable: true)
         } else {
             // A provider's own decline code: the same text as a 402 with that code (errors.md §3.4).
             error = WajubError(type: .paymentError, code: code, message: ErrorCatalogue.genericDecline.message(language), retryable: true)

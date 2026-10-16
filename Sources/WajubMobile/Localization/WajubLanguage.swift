@@ -20,13 +20,21 @@ public enum WajubLanguage: String, Sendable, CaseIterable {
     }
 }
 
-/// Fills `{name}` placeholders.
+/// Fills `{name}` placeholders. A sentence whose value is missing is left out, never shown with its
+/// placeholder ("Incorrect code. {n} attempts left." without `n`: "Incorrect code.").
 func fill(_ template: String, _ values: [String: String]) -> String {
     var text = template
     for (key, value) in values {
         text = text.replacingOccurrences(of: "{\(key)}", with: value)
     }
-    return text
+    guard text.contains("{") else { return text }
+    let kept = text.components(separatedBy: ". ").filter { !$0.contains("{") }
+    guard !kept.isEmpty else {
+        return text.replacingOccurrences(of: "\\s*\\{[^}]*\\}", with: "", options: .regularExpression)
+    }
+    var result = kept.joined(separator: ". ")
+    if let last = result.last, !".!?".contains(last) { result += "." }
+    return result
 }
 
 /// Every text the sheet shows, in English and French.
