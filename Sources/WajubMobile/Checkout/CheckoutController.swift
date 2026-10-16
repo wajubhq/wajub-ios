@@ -27,8 +27,11 @@ public final class CheckoutController {
     let connectWebSocket: (URL) -> WebSocketConnection
 
     public internal(set) var screen: CheckoutScreen = .loading
-    /// `nil` until the sheet is ready.
+    /// `nil` until the sheet is ready. While the payer generates their operator's code, `.collectingDetails`
+    /// (`stateName` says `PAYER_OTP_REQUIRED`).
     public internal(set) var state: CheckoutState?
+    /// The code the payer generates in their operator's menu, while that step is shown (`screen` is `.form`).
+    public internal(set) var payerOTP: PayerOTPScreen?
     public internal(set) var language: WajubLanguage
     public internal(set) var session: SessionResponse?
     public internal(set) var methods: [CheckoutMethod] = []
@@ -64,7 +67,9 @@ public final class CheckoutController {
     /// The loaded session said sandbox; never lowered afterwards.
     var loadedAsSandbox = false
     var isReady = false
-    var emittedState: CheckoutState?
+    var emittedStateName: String?
+    /// The request the payer's code goes with (the Pay that led to the code screen).
+    var payerOTPRequest: (channel: String, data: [String: JSONValue], phone: String?)?
     /// The attempt under way. It stays `inFlight` (undecided) from the Pay press until a definitive answer:
     /// a 402, a `pending` with a new `error_code`, a step failure, a terminal status.
     var attempt: Attempt?
@@ -110,6 +115,8 @@ public final class CheckoutController {
         /// The `error_code` the payment already carried when this attempt was sent (a refusal left by an
         /// earlier try).
         var priorErrorCode: String?
+        /// The payer's own code went with this attempt, from these instructions.
+        var payerOTP: PayerOTPInstructions?
         /// `priorErrorCode` is known. When it is not (a session from an API older than 2.1, without the
         /// key), no code is taken as this attempt's refusal before the 60 s rule.
         var priorErrorCodeKnown = false
@@ -151,10 +158,24 @@ public final class CheckoutController {
     public var isSandbox: Bool { loadedAsSandbox }
     public var transaction: SessionTransaction? { lastTransaction ?? session?.transaction }
 
-    /// The amount to pay, fee included, in the currency's usual format.
+    /// The amount to pay, fee included, in the currency's usual format. It follows the chosen operator
+    /// or channel when the payer's fee depends on it, and is what was charged once a payment started.
     public var formattedAmount: String {
-        guard let transaction = session?.transaction else { return "" }
-        return formatAmount(transaction.amountTotal)
+        guard session != nil else { return "" }
+        return formatAmount(payableAmount)
+    }
+
+    /// What the payer pays: what was charged once a payment started; else the chosen operator's or
+    /// channel's price when the payer's fee depends on it; else the payment's total.
+    public var payableAmount: Double {
+        guard let transaction = session?.transaction else { return 0 }
+        if attempt?.started == true, let charged = lastTransaction { return charged.amountTotal }
+        if case .methods = screen { return transaction.amountTotal }
+        if let method = currentMethod {
+            if method.kind == .mobileMoney, let total = mobileMoney?.selectedChoice?.amountTotal { return total }
+            if method.kind != .mobileMoney, let total = method.channels.first?.amountTotal { return total }
+        }
+        return transaction.amountTotal
     }
 
     public func formatAmount(_ amount: Double) -> String {
@@ -423,13 +444,23 @@ public final class CheckoutController {
     /// Recomputes the state, reports a change once, and lets the UI redraw.
     func update() {
         state = derivedState()
-        if isReady, let state, state != emittedState, result == nil {
-            emittedState = state
-            let event = StateChangeEvent(state: state, method: attempt?.family ?? currentMethod?.family ?? "unknown")
+        if isReady, let state, let name = stateName, name != emittedStateName, result == nil {
+            emittedStateName = name
+            let event = StateChangeEvent(state: state, method: attempt?.family ?? currentMethod?.family ?? "unknown", name: name)
             emit { try self.options.callbacks.onStateChange?(event) }
         }
         onChange?()
     }
+
+    /// The state's name, as the web checkout names it: `state`'s, or `PAYER_OTP_REQUIRED` while the payer
+    /// generates the code their operator asks for.
+    public var stateName: String? {
+        guard let state else { return nil }
+        if case .form = screen, payerOTP != nil, !isBusy { return CheckoutController.payerOTPRequiredName }
+        return state.rawValue
+    }
+
+    static let payerOTPRequiredName = "PAYER_OTP_REQUIRED"
 
     func derivedState() -> CheckoutState? {
         switch screen {

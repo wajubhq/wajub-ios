@@ -6,7 +6,7 @@ final class ParsingTests: XCTestCase {
     /// PR-01 parses every fixture
     func test_PR_01_parsesEveryFixture() throws {
         let names = Fixtures.allNames
-        XCTAssertEqual(names.count, 99)
+        XCTAssertEqual(names.count, 108)
         for name in names {
             let envelope = Fixtures.envelope(name)
             let status = envelope["http_status"]?.int ?? 200

@@ -2,6 +2,12 @@
 
 ## 1.1.0 (unreleased)
 
+- When the payer's fee depends on the operator or the channel, the amount shown follows the payer's
+  choice, and the success result carries what was charged.
+- Mobile Money operators that want a code the payer generates in their own menu (Orange in Burkina
+  Faso) are supported: the sheet guides the payer through it. `onStateChange` names that step
+  `PAYER_OTP_REQUIRED` in `StateChangeEvent.name` while `state` stays `.collectingDetails`, so a
+  switch over `CheckoutState` keeps compiling; your own screens draw `CheckoutController.payerOTP`.
 - Card payments whose provider asks for several confirmation steps in a row (a date of birth then a
   code, a PIN then the bank's page) go through each step in the sheet.
 - Channel and operator logos show as images where Wajub has them; the others keep their brand badge.

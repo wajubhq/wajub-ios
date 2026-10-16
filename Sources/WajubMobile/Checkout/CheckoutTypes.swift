@@ -101,9 +101,12 @@ public struct ReadyEvent: Equatable, Sendable {
 }
 
 public struct StateChangeEvent: Equatable, Sendable {
+    /// While the payer generates their operator's code, `.collectingDetails`: `name` says `PAYER_OTP_REQUIRED`.
     public var state: CheckoutState
     /// `mobile_money`, `card`, `wallet` or `unknown`.
     public var method: String?
+    /// The state's name, as the web checkout names it: `state`'s, or `PAYER_OTP_REQUIRED`.
+    public var name: String = ""
 }
 
 public struct PaymentStartedEvent: Equatable, Sendable {

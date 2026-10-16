@@ -159,6 +159,10 @@ public struct ChannelOperator: Equatable, Sendable {
     public var logo: String?
     /// The same logo as a PNG, when the API has one.
     public var logoPNG: String?
+    /// The payer's fee on this operator, when the payer bears a fee that depends on it.
+    public var feeAmount: Double?
+    /// What the payer pays on this operator, fee included, when it differs by operator.
+    public var amountTotal: Double?
 
     public init(json: JSONValue) {
         slug = json["slug"]?.string ?? ""
@@ -166,6 +170,8 @@ public struct ChannelOperator: Equatable, Sendable {
         name = json["name"]?.string ?? ""
         logo = json["logo"]?.nonEmptyString
         logoPNG = json["logo_png"]?.nonEmptyString
+        feeAmount = json["fee_amount"]?.double
+        amountTotal = json["amount_total"]?.double
     }
 
     /// The logo iOS can draw: the PNG, else a logo that is not an SVG; `nil` otherwise.
@@ -193,6 +199,12 @@ public struct SessionChannel: Equatable, Sendable {
     public var currency: String?
     /// Aggregates only.
     public var operators: [ChannelOperator]
+    /// The payer's fee on this channel, when the payer bears a fee that depends on it.
+    public var feeAmount: Double?
+    /// What the payer pays on this channel, fee included, when it differs by channel.
+    public var amountTotal: Double?
+    /// Mobile Money: the payer will generate a code in the operator's menu before paying.
+    public var payerOTP: PayerOTPInstructions?
 
     public init(json: JSONValue) {
         slug = json["slug"]?.string ?? json["id"]?.string ?? ""
@@ -207,6 +219,9 @@ public struct SessionChannel: Equatable, Sendable {
         maxAmount = json["max_amount"]?.double
         currency = json["currency"]?.nonEmptyString
         operators = (json["operators"]?.array ?? []).map(ChannelOperator.init(json:))
+        feeAmount = json["fee_amount"]?.double
+        amountTotal = json["amount_total"]?.double
+        payerOTP = json["payer_otp"].flatMap { $0.object == nil ? nil : PayerOTPInstructions(json: $0) }
     }
 
     /// `mobile_money` or `mobile`.

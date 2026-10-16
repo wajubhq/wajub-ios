@@ -124,7 +124,7 @@ sheet.
 | Callback | Payload | When |
 |---|---|---|
 | `onReady` | `ReadyEvent`: `sessionId`, `environment` (`"sandbox"` or `"live"`), `amount`, `currency`, `methods` | The first screen is drawn, also for a payment already paid or ended |
-| `onStateChange` | `StateChangeEvent`: `state`, `method` (`mobile_money`, `card`, `wallet` or `unknown`) | After `onReady`, then on every state change |
+| `onStateChange` | `StateChangeEvent`: `state`, `name` (the state's name, below), `method` (`mobile_money`, `card`, `wallet` or `unknown`) | After `onReady`, then on every state change |
 | `onLoadError` | `WajubError` | The sheet cannot offer a payment |
 | `onPaymentStarted` | `PaymentStartedEvent`: `method`, `channel` | The payment request is accepted. From now on, closing the sheet resolves `.processing` |
 | `onRedirect` | `RedirectEvent`: `url` | Right before a provider page opens |
@@ -143,7 +143,8 @@ options.callbacks = CheckoutCallbacks(
 
 ### States
 
-`CheckoutState` is a `String` enum whose raw values are the state names.
+`CheckoutState` is a `String` enum whose raw values are the state names; `StateChangeEvent.name` and
+`CheckoutController.stateName` give every name, `PAYER_OTP_REQUIRED` included.
 
 | State | What the payer sees |
 |---|---|
@@ -155,6 +156,7 @@ options.callbacks = CheckoutCallbacks(
 | `OTP_REQUIRED`, `PIN_REQUIRED`, `PHONE_REQUIRED`, `BIRTHDAY_REQUIRED`, `ADDRESS_REQUIRED` | A [confirmation step](#confirmation-steps) |
 | `3DS_REQUIRED` | 3-D Secure in Safari, or in sandbox a code sent by email |
 | `VERIFYING` | The step's screen while its answer is checked |
+| `PAYER_OTP_REQUIRED` | The code the payer generates in their operator's menu: the steps, the code to dial (with a Copy button), the exact amount and the code field. `name` says it; `state` is `.collectingDetails` |
 | `PENDING` | "Payment in progress", with **Continue payment** when a payment page can be reopened |
 | `SUCCESS`, `FAILED`, `EXPIRED`, `CANCELLED` | The outcome, with **Try again** on a failure that allows it |
 
@@ -329,7 +331,9 @@ gone.
 
 - Your `CheckoutPresenting` draws the controller's `screen`, redraws on `onChange`, and wires your
   buttons to the controller's actions, `selectMethod`, `setPhone`, `submitMobileMoney`,
-  `submitCard`, `submitStep`, `tryAgain`, `cancelPayment` and the others. Call `dismiss`'s
+  `submitCard`, `submitStep`, `tryAgain`, `cancelPayment` and the others. While
+  `controller.payerOTP` is set, the form is the operator's code step: draw it, and call
+  `submitPayerOTP(_:)` or `leavePayerOTP()`. Call `dismiss`'s
   `completion` once your sheet is gone, and `controller.hostGone()` if your sheet cannot be shown.
 - Your `BrowserOpening` opens provider pages: `.inApp` in an `SFSafariViewController`, calling
   `onClose` once it is closed, and `.external` with `UIApplication.open`. It returns `false` when

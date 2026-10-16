@@ -92,6 +92,8 @@ struct MethodFormView: View {
         let controller = model.controller
         VStack(alignment: .leading, spacing: style.gapRow) {
             switch controller.currentMethod?.kind {
+            case .mobileMoney? where controller.payerOTP != nil:
+                PayerOTPView(model: model, style: style, screen: controller.payerOTP!)
             case .mobileMoney?:
                 MobileMoneyFormView(model: model, style: style)
             case .card(let flavour)?:
@@ -134,6 +136,11 @@ struct MobileMoneyFormView: View {
                 if let unavailable = form.unavailableDetected, let limit = unavailable.limit {
                     BannerView(message: model.strings.operatorOutOfLimits(unavailable.label, limit: limitText(limit)),
                                foreground: style.warning, background: style.warningBackground, style: style)
+                }
+                if let announced = form.announcedPayerOTP {
+                    Text(model.strings.payerOTPFormHint(ussdCode: announced.ussdCode))
+                        .font(style.hint)
+                        .foregroundColor(style.textSecondary)
                 }
                 PrimaryButton(title: model.strings.pay(controller.formattedAmount), style: style, busy: controller.isPaying,
                               enabled: !form.hasNoOperator && !controller.isCancelling) {

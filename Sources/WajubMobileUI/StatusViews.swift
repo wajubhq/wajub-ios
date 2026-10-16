@@ -58,8 +58,13 @@ struct ApprovalView: View {
     var body: some View {
         let strings = model.strings
         VStack(spacing: style.gapRow) {
-            OutcomeHeader(symbol: "iphone.radiowaves.left.and.right", tint: style.primary, title: strings.approvalTitle,
-                          message: strings.approvalBody(amount: model.controller.formattedAmount, phone: approval.phone), style: style)
+            if approval.payerOTPReceived {
+                OutcomeHeader(symbol: "iphone.radiowaves.left.and.right", tint: style.primary, title: strings.payerOTPApprovalMessage,
+                              message: nil, style: style)
+            } else {
+                OutcomeHeader(symbol: "iphone.radiowaves.left.and.right", tint: style.primary, title: strings.approvalTitle,
+                              message: strings.approvalBody(amount: model.controller.formattedAmount, phone: approval.phone), style: style)
+            }
             if let instruction = approval.instruction {
                 InstructionView(instruction: instruction, model: model, style: style)
             }

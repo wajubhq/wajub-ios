@@ -21,6 +21,8 @@ public struct OperatorChoice: Equatable, Sendable, Identifiable {
     public var isOperatorIndependent: Bool
     /// The amount is out of this channel's limits.
     public var limit: AmountLimit?
+    /// What the payer pays with this operator, fee included, when it depends on the operator.
+    public var amountTotal: Double? = nil
 }
 
 /// How the payer chooses the operator.
@@ -87,6 +89,12 @@ public struct MobileMoneyForm: Equatable, Sendable {
     public var formattedPhone: String { data.formatAsYouType(phone) }
     public var detectedOperator: String? { data.detectOperator(phone, country: country, sandbox: sandbox) }
     public var selectedChoice: OperatorChoice? { choices.first { $0.id == selection } }
+    /// The chosen operator's channel announces that the payer will generate a code in the operator's
+    /// menu: Pay opens that step first.
+    public var announcedPayerOTP: PayerOTPInstructions? {
+        guard let choice = selectedChoice, !choice.isAggregateMember else { return nil }
+        return channels.first { $0.slug == choice.channelSlug && !$0.isAggregate }?.payerOTP
+    }
     /// `operator_unavailable`: no operator the payer can pick for the country; Pay is disabled.
     public var hasNoOperator: Bool { !choices.contains { $0.limit == nil } }
 
@@ -200,16 +208,18 @@ public struct MobileMoneyForm: Equatable, Sendable {
         let data = MobileMoneyData.shared
         var choices: [OperatorChoice] = []
         for channel in channels where channel.isMobileMoney && (channel.countries.isEmpty || channel.countries.contains(country)) {
-            let limit = MethodResolver.limit(channel, amount: amount)
             for member in availableOperators(channel, config: config, language: language)
             where !choices.contains(where: { $0.id == member.id }) {
                 let label = data.operators[member.id]?.brand?.label ?? member.name
+                // What the payer pays on this operator; the channel's limits apply to it.
+                let total = member.amountTotal ?? channel.amountTotal
                 choices.append(OperatorChoice(
                     id: member.id, label: label, logoURL: member.logo.flatMap { $0.lowercased().hasPrefix("https://") ? $0 : nil },
                     drawableLogoURL: member.drawableLogo,
                     badge: data.badge(operatorId: member.id, fallbackName: member.name), channelSlug: channel.slug,
                     operatorSlug: member.slug, isAggregateMember: channel.isAggregate,
-                    isOperatorIndependent: data.operatorIndependentWallets.contains(member.id), limit: limit))
+                    isOperatorIndependent: data.operatorIndependentWallets.contains(member.id),
+                    limit: MethodResolver.limit(channel, amount: total ?? amount), amountTotal: total))
             }
         }
         return choices
@@ -219,13 +229,13 @@ public struct MobileMoneyForm: Equatable, Sendable {
     /// Aggregate members are named in the session's locale; another channel by its name for the sheet's language.
     static func availableOperators(_ channel: SessionChannel, config: SdkConfigResponse?,
                                    language: WajubLanguage = .en)
-        -> [(id: String, name: String, logo: String?, drawableLogo: String?, slug: String)] {
-        let members: [(id: String, name: String, logo: String?, drawableLogo: String?, slug: String)]
+        -> [(id: String, name: String, logo: String?, drawableLogo: String?, slug: String, amountTotal: Double?)] {
+        let members: [(id: String, name: String, logo: String?, drawableLogo: String?, slug: String, amountTotal: Double?)]
         if channel.isAggregate {
-            members = channel.operators.map { ($0.operatorId, $0.name, $0.logo, $0.drawableLogo, $0.slug) }
+            members = channel.operators.map { ($0.operatorId, $0.name, $0.logo, $0.drawableLogo, $0.slug, $0.amountTotal) }
         } else {
             let id = channel.slug.split(separator: ".").last.map(String.init) ?? channel.slug
-            members = [(id, channel.localizedName(language), channel.logo, channel.drawableLogo, channel.slug)]
+            members = [(id, channel.localizedName(language), channel.logo, channel.drawableLogo, channel.slug, channel.amountTotal)]
         }
         return members.filter { MethodResolver.mobileMoneyConfig(channel, operatorSlug: channel.isAggregate ? $0.slug : nil, config: config).available }
     }

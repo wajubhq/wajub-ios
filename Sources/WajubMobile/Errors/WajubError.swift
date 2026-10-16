@@ -147,5 +147,7 @@ extension WajubError {
         public static let paymentInProgress = "payment_in_progress"
         /// `WajubSession.cancel()`: part of the payment is paid, so it can't be cancelled.
         public static let paymentPartlyPaid = "payment_partly_paid"
+        /// The operator refused too many of the payer's codes: another payment method is needed.
+        public static let otpAttemptsExceeded = "otp_attempts_exceeded"
     }
 }

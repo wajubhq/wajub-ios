@@ -21,6 +21,9 @@ public struct RequiredAction: Equatable, Sendable {
     public var hint: String?
     public var clientSession: ClientSession?
     public var transaction: SessionTransaction?
+    /// With `.payerOTP`: how the payer gets the code their operator asks for. Nothing was charged: pay
+    /// again with the code the payer generated, as `otp` in `data`.
+    public var payerOTP: PayerOTPInstructions? = nil
 }
 
 /// The mapping of one payment answer, for hosts that draw their own UI (`WajubSession.process(…)`).
@@ -49,6 +52,8 @@ public enum ProcessOutcome: Equatable, Sendable {
         case .clientSession(let session, let response):
             self = .requiresAction(RequiredAction(action: .clientSession, url: session.hostedURL, clientSession: session,
                                                   transaction: response.transaction))
+        case .payerOTP(let instructions, let response):
+            self = .requiresAction(RequiredAction(action: .payerOTP, transaction: response.transaction, payerOTP: instructions))
         case .unsupportedAction(let response):
             self = .failed(error: .catalogue(WajubError.Code.unsupportedAction, language), transaction: response.transaction)
         case .unconfirmed:
@@ -104,6 +109,8 @@ enum PaymentAnswer: Sendable {
     case threeDSCode(ThreeDSChallenge, ProcessResponse)
     case step(ConfirmStep, ProcessResponse)
     case clientSession(ClientSession, ProcessResponse)
+    /// `payer_otp`: the payer generates a code in the operator's menu; nothing was charged.
+    case payerOTP(PayerOTPInstructions, ProcessResponse)
     case unsupportedAction(ProcessResponse)
     /// A 2xx with neither `action` nor `transaction`.
     case unconfirmed(ProcessResponse)
@@ -140,6 +147,9 @@ enum PaymentAnswer: Sendable {
                 return .unsupportedAction(response)
             }
             return .clientSession(session, response)
+        case .payerOTP:
+            guard let instructions = response.payerOTP else { return .unsupportedAction(response) }
+            return .payerOTP(instructions, response)
         default:
             guard let kind = ConfirmStepKind(action: action) else { return .unsupportedAction(response) }
             let body = answer.body ?? .null

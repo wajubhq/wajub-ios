@@ -279,6 +279,7 @@ final class FakeWebSocket: WebSocketConnection, @unchecked Sendable {
 final class CallbackRecorder {
     var events: [String] = []
     var states: [CheckoutState] = []
+    var stateNames: [String] = []
     var ready: [ReadyEvent] = []
     var loadErrors: [WajubError] = []
     var errors: [WajubError] = []
@@ -291,7 +292,11 @@ final class CallbackRecorder {
     var callbacks: CheckoutCallbacks {
         CheckoutCallbacks(
             onReady: { [unowned self] in self.ready.append($0); self.events.append("ready") },
-            onStateChange: { [unowned self] in self.states.append($0.state); self.events.append("state:\($0.state.rawValue)") },
+            onStateChange: { [unowned self] in
+                self.states.append($0.state)
+                self.stateNames.append($0.name)
+                self.events.append("state:\($0.state.rawValue)")
+            },
             onLoadError: { [unowned self] in self.loadErrors.append($0); self.events.append("loadError:\($0.code)") },
             onPaymentStarted: { [unowned self] in self.started.append($0); self.events.append("started") },
             onRedirect: { [unowned self] in self.redirects.append($0.url); self.events.append("redirect") },

@@ -15,6 +15,8 @@ extension CheckoutController {
     /// Back to the method list.
     public func backToMethods() {
         guard canGoBack else { return }
+        payerOTP = nil
+        payerOTPRequest = nil
         screen = .methods
         banner = nil
         fieldErrors = [:]
@@ -25,6 +27,8 @@ extension CheckoutController {
         currentMethod = method
         banner = nil
         fieldErrors = [:]
+        payerOTP = nil
+        payerOTPRequest = nil
         switch method.kind {
         case .mobileMoney:
             if mobileMoney == nil, let session {
@@ -85,8 +89,60 @@ extension CheckoutController {
             return
         }
         guard let request = form.request(returnURL: options.returnURL) else { return }
+        payerOTPRequest = (request.channel, request.data, request.data["phone"]?.string)
+        if let announced = form.announcedPayerOTP {
+            // The operator will want the payer's own code: ask for it first, nothing is sent yet.
+            showPayerOTP(announced)
+            return
+        }
         pay(channel: request.channel, data: request.data, family: "mobile_money", mobileMoney: true,
             phone: request.data["phone"]?.string)
+    }
+
+    // MARK: The payer's own code (README §6.7)
+
+    /// The code screen: the steps to get the code, the code to dial, the exact amount.
+    func showPayerOTP(_ instructions: PayerOTPInstructions, message: String? = nil, attemptsRemaining: Int? = nil) {
+        isBusy = false
+        var screen = PayerOTPScreen(instructions: instructions, language: language, sandbox: isSandbox)
+        screen.message = message
+        screen.attemptsRemaining = attemptsRemaining
+        payerOTP = screen
+        banner = nil
+        fieldErrors = [:]
+        self.screen = .form
+        update()
+    }
+
+    /// Pays with the code the payer generated in their operator's menu. The code is checked first
+    /// (digits, the expected length); one that fails it is not sent.
+    public func submitPayerOTP(_ code: String) {
+        guard result == nil, !isWorking, case .form = screen, let screen = payerOTP, let request = payerOTPRequest else { return }
+        let code = Digits.ascii(code).trimmingCharacters(in: .whitespaces)
+        guard Digits.isASCIIDigits(code), screen.lengthRange.contains(code.count) else {
+            let range = screen.lengthRange
+            payerOTP?.message = strings.payerOTPLength(screen.instructions.otpLength, min: range.lowerBound, max: range.upperBound)
+            payerOTP?.attemptsRemaining = nil
+            update()
+            return
+        }
+        var data = request.data
+        data["otp"] = .string(code)
+        // A new press of Pay: a new Idempotency-Key.
+        reusableKey = nil
+        payerOTP?.message = nil
+        pay(channel: request.channel, data: data, family: "mobile_money", mobileMoney: true, phone: request.phone)
+        attempt?.payerOTP = screen.instructions
+    }
+
+    /// "Use another payment method" on the code screen: back to the Mobile Money form.
+    public func leavePayerOTP() {
+        guard result == nil, !isWorking, payerOTP != nil else { return }
+        payerOTP = nil
+        payerOTPRequest = nil
+        attempt = nil
+        screen = .form
+        update()
     }
 
     // MARK: Card (README §7, §11)

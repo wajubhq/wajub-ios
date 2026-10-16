@@ -82,7 +82,25 @@ extension CheckoutController {
     func handlePaymentAnswer(_ answer: APIAnswer, mobileMoney: Bool, clientSession: Bool) {
         guard result == nil else { return }
         isBusy = false
-        switch PaymentAnswer.classify(answer, mobileMoney: mobileMoney, allowsClientSession: clientSession) {
+        let classified = PaymentAnswer.classify(answer, mobileMoney: mobileMoney, allowsClientSession: clientSession)
+        if case .payerOTP(let instructions, let response) = classified {
+            // Nothing was charged: the payer generates a code in the operator's menu, then pays again.
+            if let transaction = response.transaction { lastTransaction = transaction }
+            pendingAgain()
+            let length = instructions.otpLength
+            switch instructions.reason {
+            case "invalid":
+                showPayerOTP(instructions, message: strings.payerOTPLength(length))
+            case "refused":
+                showPayerOTP(instructions, message: strings.payerOTPRefused, attemptsRemaining: instructions.attemptsRemaining)
+            default:
+                showPayerOTP(instructions)
+            }
+            return
+        }
+        let codeSent = attempt?.payerOTP != nil
+        payerOTP = nil
+        switch classified {
         case .succeeded(let transaction):
             paymentStarted(transaction)
             succeed(transaction)
@@ -90,7 +108,8 @@ extension CheckoutController {
             paymentStarted(response.transaction)
             let instruction = response.transaction?.processingContext?.payerInstruction
             switch kind {
-            case .approval: screen = .approval(ApprovalScreen(phone: attempt?.phone, instruction: instruction))
+            case .approval:
+                screen = .approval(ApprovalScreen(phone: attempt?.phone, instruction: instruction, payerOTPReceived: codeSent))
             case .ussd: screen = .ussd(instruction: instruction)
             case .pending: screen = .pending(PendingScreen())
             }
@@ -116,6 +135,8 @@ extension CheckoutController {
             paymentStarted(response.transaction)
             attempt?.clientSession = session
             openRedirect(session.hostedURL ?? "", threeDS: false)
+        case .payerOTP:
+            break
         case .unsupportedAction(let response):
             paymentStarted(response.transaction)
             fail(.catalogue(WajubError.Code.unsupportedAction, language))
@@ -136,6 +157,11 @@ extension CheckoutController {
         if let transaction = body?.transaction { lastTransaction = transaction }
         // A decline stays on the payment until the next try starts.
         if answer.status == 402, let code = body?.errorCode { lastErrorCode = code }
+        payerOTP = nil
+        if answer.status == 402, body?.errorCode == WajubError.Code.otpAttemptsExceeded {
+            backToMobileMoneyForm(error)
+            return
+        }
         switch answer.status {
         case 400:
             // Still busy, and the attempt undecided, until the status says what happened: no Pay, no
@@ -172,6 +198,21 @@ extension CheckoutController {
             }
             fail(error)
         }
+    }
+
+    /// Too many of the payer's codes refused on this channel: back to the Mobile Money form with that
+    /// error; the payment is still payable another way.
+    func backToMobileMoneyForm(_ error: WajubError) {
+        stopWatching()
+        pendingAgain()
+        isBusy = false
+        payerOTP = nil
+        payerOTPRequest = nil
+        fieldErrors = [:]
+        banner = error
+        screen = .form
+        update()
+        emit { try self.options.callbacks.onError?(error) }
     }
 
     /// A 422: back to the form with field errors (README §9.1).

@@ -32,6 +32,7 @@ final class ErrorTests: XCTestCase {
         "birthday-verify-422-format": ("validation_error", .invalidRequestError, true, nil, "birthday"),
         "broadcasting-auth-403": ("merchant_restricted", .paymentError, false, nil, nil),
         "cancel-400-not-cancellable": ("not_processable", .invalidRequestError, false, nil, nil),
+        "process-402-payer-otp-attempts-exceeded": ("otp_attempts_exceeded", .paymentError, true, "otp_attempts_exceeded", nil),
         "cancel-409-payment-in-progress": ("payment_in_progress", .invalidRequestError, false, nil, nil),
         "cancel-409-payment-partly-paid": ("payment_partly_paid", .invalidRequestError, false, nil, nil),
         "client-session-422-sandbox": ("client_session_unavailable", .invalidRequestError, false, nil, "request"),
@@ -195,7 +196,8 @@ final class ErrorTests: XCTestCase {
                         "redirect_unavailable", "invalid_otp", "otp_expired", "invalid_pin", "pin_expired", "phone_expired",
                         "invalid_birthday", "birthday_expired", "invalid_address", "address_expired", "max_attempts_exceeded",
                         "invalid_code", "3ds_failed", "3ds_rejected", "3ds_cancelled", "3ds_timeout", "client_session_unavailable",
-                        "client_session_expired", "sheet_already_presented", "payment_partly_paid", "payment_in_progress"]
+                        "client_session_expired", "sheet_already_presented", "payment_partly_paid", "payment_in_progress",
+                        "otp_attempts_exceeded"]
         XCTAssertEqual(Set(contract), Set(ErrorCatalogue.entries.keys))
 
         // The sheet's own texts exist in both languages.

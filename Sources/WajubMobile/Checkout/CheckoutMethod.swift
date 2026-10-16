@@ -126,17 +126,17 @@ enum MethodResolver {
         for channel in shown {
             if channel.isMobileMoney {
                 guard channel == mobileMoneyChannels.first else { continue }
-                let limits = mobileMoneyChannels.map { limit($0, amount: amount) }
+                let limits = mobileMoneyChannels.map { limit($0, amount: $0.amountTotal ?? amount) }
                 methods.append(CheckoutMethod(id: "mobile_money", kind: .mobileMoney, name: strings.mobileMoney, logo: channel.logo,
                                               channels: mobileMoneyChannels,
                                               limit: limits.contains(where: { $0 == nil }) ? nil : limits.first ?? nil))
             } else if channel.type == "card",
                       let flavour = cardFlavour(channel, config: config, sandbox: session.transaction.sandbox, hasCardCollector: hasCardCollector) {
                 methods.append(CheckoutMethod(id: "card", kind: .card(flavour), name: channel.localizedName(language), logo: channel.logo,
-                                              channels: [channel], limit: limit(channel, amount: amount)))
+                                              channels: [channel], limit: limit(channel, amount: channel.amountTotal ?? amount)))
             } else {
                 methods.append(CheckoutMethod(id: channel.slug, kind: .wallet, name: channel.localizedName(language), logo: channel.logo,
-                                              channels: [channel], limit: limit(channel, amount: amount)))
+                                              channels: [channel], limit: limit(channel, amount: channel.amountTotal ?? amount)))
             }
         }
         return methods

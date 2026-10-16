@@ -36,6 +36,103 @@ public struct ApprovalScreen: Equatable, Sendable {
     public var phone: String?
     /// The operator's instruction (English), which may give a code to dial.
     public var instruction: String?
+    /// The payer's own code was received: say so instead of asking to approve on the phone.
+    public var payerOTPReceived = false
+}
+
+/// The code the payer generates in their operator's menu, for the exact amount, before paying.
+/// While it is shown, `CheckoutController.screen` is `.form` and `stateName` is `PAYER_OTP_REQUIRED`.
+public struct PayerOTPScreen: Equatable, Sendable {
+    /// One step to get the code, in parts to draw: the code to dial and the amount stand out.
+    public struct StepLine: Equatable, Sendable {
+        public enum Part: Equatable, Sendable {
+            case text(String)
+            /// The code to dial (copy it; iOS cannot dial it from a link).
+            case ussdCode(String)
+            /// The exact amount, to show in bold.
+            case amount(String)
+        }
+
+        public var parts: [Part]
+
+        /// The step as plain text.
+        public var text: String {
+            parts.map { part -> String in
+                switch part {
+                case .text(let text), .ussdCode(let text), .amount(let text): return text
+                }
+            }.joined()
+        }
+    }
+
+    public var instructions: PayerOTPInstructions
+    /// The steps in the sheet's language.
+    public var steps: [StepLine]
+    /// Why the last code was not taken, shown on the screen.
+    public var message: String?
+    /// How many more codes the operator may refuse, when the answer said it.
+    public var attemptsRemaining: Int?
+    /// In a sandbox payment, the code the test operator takes.
+    public var sandboxCode: String?
+    /// The code's length: exactly `instructions.otpLength`, else 4 to 8 digits.
+    public var lengthRange: ClosedRange<Int> {
+        instructions.otpLength.map { $0...$0 } ?? 4...8
+    }
+
+    /// The exact amount to type, as the operator wants it.
+    public var exactAmount: String { "\(instructions.amount) \(instructions.currency)" }
+
+    init(instructions: PayerOTPInstructions, language: WajubLanguage, sandbox: Bool) {
+        self.instructions = instructions
+        steps = PayerOTPScreen.lines(instructions, language: language)
+        sandboxCode = sandbox ? PayerOTPScreen.sandboxCode : nil
+    }
+
+    /// The code the sandbox operator takes.
+    static let sandboxCode = "123456"
+
+    /// The steps of the sheet's language (else English, else French), from their template, or their text
+    /// when the template names something else or misses a value; none: the generic steps.
+    static func lines(_ instructions: PayerOTPInstructions, language: WajubLanguage) -> [StepLine] {
+        let steps = instructions.steps[language.rawValue] ?? instructions.steps["en"] ?? instructions.steps["fr"] ?? []
+        guard !steps.isEmpty else {
+            return WajubStrings(language).payerOTPGenericSteps.map { template in
+                line(template, ussdCode: instructions.ussdCode, amount: instructions.amount, currency: instructions.currency,
+                     genericAmount: true) ?? StepLine(parts: [.text(template)])
+            }
+        }
+        return steps.map { step in
+            step.template.flatMap {
+                line($0, ussdCode: instructions.ussdCode, amount: instructions.amount, currency: instructions.currency, genericAmount: false)
+            } ?? StepLine(parts: [.text(step.text)])
+        }
+    }
+
+    /// A template's parts, or `nil` when it names another placeholder or one without a value.
+    private static func line(_ template: String, ussdCode: String?, amount: String, currency: String, genericAmount: Bool) -> StepLine? {
+        var parts: [StepLine.Part] = []
+        var rest = Substring(template)
+        while let open = rest.firstIndex(of: "{") {
+            guard let close = rest[open...].firstIndex(of: "}") else { break }
+            if open > rest.startIndex { parts.append(.text(String(rest[rest.startIndex..<open]))) }
+            switch rest[rest.index(after: open)..<close] {
+            case "ussd_code":
+                guard let ussdCode else { return nil }
+                parts.append(.ussdCode(ussdCode))
+            case "amount":
+                guard !amount.isEmpty else { return nil }
+                parts.append(.amount(genericAmount ? "\(amount) \(currency)" : amount))
+            case "currency":
+                guard !currency.isEmpty else { return nil }
+                parts.append(.text(currency))
+            default:
+                return nil
+            }
+            rest = rest[rest.index(after: close)...]
+        }
+        if !rest.isEmpty { parts.append(.text(String(rest))) }
+        return StepLine(parts: parts)
+    }
 }
 
 public struct StepScreen: Equatable, Sendable {

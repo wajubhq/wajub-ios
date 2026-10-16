@@ -150,6 +150,52 @@ public struct ProcessAction: RawRepresentable, Hashable, Sendable {
     public static let confirmBirthday = ProcessAction(rawValue: "confirm_birthday")
     public static let confirmAddress = ProcessAction(rawValue: "confirm_address")
     public static let clientSession = ProcessAction(rawValue: "client_session")
+    /// The payer generates a code in their operator's menu, sent with the payment (`PayerOTPInstructions`).
+    public static let payerOTP = ProcessAction(rawValue: "payer_otp")
+}
+
+/// How the payer generates the code their operator asks for, for the exact amount, before paying
+/// (Orange in Burkina Faso, for instance).
+public struct PayerOTPInstructions: Equatable, Sendable {
+    /// One step to get the code: `text` as written, `template` with `{ussd_code}`, `{amount}`, `{currency}`.
+    public struct Step: Equatable, Sendable {
+        public var text: String
+        public var template: String?
+    }
+
+    /// The channel that asks for the code.
+    public var channel: String
+    /// The code to dial in the operator's menu, when there is one.
+    public var ussdCode: String?
+    /// The code's exact number of digits; `nil`: 4 to 8.
+    public var otpLength: Int?
+    /// The exact amount to type, as written (never reformat it).
+    public var amount: String
+    public var currency: String
+    /// The steps, by language (`en`, `fr`…).
+    public var steps: [String: [Step]]
+    /// Why the code is asked: `required`, `invalid` (malformed) or `refused` (the operator refused it).
+    public var reason: String?
+    /// How many more codes the operator may refuse for this payment on this channel.
+    public var attemptsRemaining: Int?
+
+    public init(json: JSONValue) {
+        channel = json["channel"]?.string ?? ""
+        ussdCode = json["ussd_code"]?.nonEmptyString
+        otpLength = json["otp_length"]?.int
+        amount = json["amount"]?.string ?? ""
+        currency = json["currency"]?.string ?? ""
+        var steps: [String: [Step]] = [:]
+        for (language, list) in json["steps"]?.object ?? [:] {
+            steps[language] = (list.array ?? []).compactMap { entry in
+                guard let text = entry["text"]?.nonEmptyString ?? entry["template"]?.nonEmptyString else { return nil }
+                return Step(text: text, template: entry["template"]?.nonEmptyString)
+            }
+        }
+        self.steps = steps
+        reason = json["reason"]?.nonEmptyString
+        attemptsRemaining = json["attempts_remaining"]?.int
+    }
 }
 
 /// A payment answer: its transaction and what it asks for next.
@@ -174,6 +220,9 @@ public struct ProcessResponse: Equatable, Sendable {
     public var addressId: String?
     public var addressInstruction: String?
     public var clientSession: ClientSession?
+    /// When the payment asks for the payer's own code (`ProcessAction.payerOTP`): how the payer gets it,
+    /// why it is asked, the tries left.
+    public var payerOTP: PayerOTPInstructions?
 
     public init(json: JSONValue) {
         message = json["message"]?.nonEmptyString
@@ -195,6 +244,7 @@ public struct ProcessResponse: Equatable, Sendable {
         addressId = json["address_id"]?.nonEmptyString
         addressInstruction = json["address_instruction"]?.nonEmptyString
         clientSession = json["client_session"].flatMap { $0.object == nil ? nil : ClientSession(json: $0) }
+        payerOTP = json["payer_otp"].flatMap { $0.object == nil ? nil : PayerOTPInstructions(json: $0) }
     }
 }
 

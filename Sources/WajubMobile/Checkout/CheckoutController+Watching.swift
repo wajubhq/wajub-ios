@@ -71,6 +71,19 @@ extension CheckoutController {
             // a refused try is not the end yet. On a client session the provider's own verdict comes
             // from /pay/client-session/complete first: a payment made on the page always wins over a
             // refused try, which stands only once /complete has answered without a verdict.
+            if let instructions = attempt?.payerOTP, let code = update.errorCode {
+                // The operator refused the payer's code after the charge went on.
+                if code == WajubError.Code.invalidOTP {
+                    stopWatching()
+                    pendingAgain()
+                    showPayerOTP(instructions, message: strings.payerOTPRefused)
+                    return
+                }
+                if code == WajubError.Code.otpAttemptsExceeded {
+                    backToMobileMoneyForm(.catalogue(code, language))
+                    return
+                }
+            }
             if isBrowserOpen && browserInApp { return }
             if let attempt, attempt.clientSession != nil, !attempt.clientSessionAnswered {
                 if attempt.completingClientSession { self.attempt?.heldRefusal = update }
