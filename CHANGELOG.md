@@ -19,6 +19,8 @@
 - A number written with `00` is read like one written with `+`, another country's number is refused,
   and in a sandbox payment a test number chosen with another operator than the one it tests is
   refused as in live (`CheckoutController.warning`, now always `nil`, is deprecated).
+- Before the payer types a number, the operator preselected is a network's, never a wallet that
+  takes a number from any network (Express Union in Cameroon).
 - Digits typed on an Arabic, Persian or other non-Latin keyboard are read as the same digits in
   the Mobile Money number, the confirmation codes and the card fields, instead of being dropped.
 - `MobileMoneyData.nationalDigits(_:country:)` now keeps the 0 where it is part of the number, and

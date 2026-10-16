@@ -154,7 +154,7 @@ public struct MobileMoneyForm: Equatable, Sendable {
 
     private mutating func refreshChoices() {
         choices = MobileMoneyForm.choices(channels: channels, country: country, config: config, language: language, amount: amount)
-        selection = enabledIds.first
+        selection = MobileMoneyForm.initialSelection(choiceIds: enabledIds, data: data)
         selection = MobileMoneyForm.preselect(current: selection, pickedByHand: false, detected: detectedOperator, choiceIds: enabledIds)
     }
 
@@ -228,6 +228,12 @@ public struct MobileMoneyForm: Equatable, Sendable {
             members = [(id, channel.localizedName(language), channel.logo, channel.drawableLogo, channel.slug)]
         }
         return members.filter { MethodResolver.mobileMoneyConfig(channel, operatorSlug: channel.isAggregate ? $0.slug : nil, config: config).available }
+    }
+
+    /// Before any number: the first choice that is not a wallet taking any number (Express Union, Wave…),
+    /// else the first.
+    static func initialSelection(choiceIds: [String], data: MobileMoneyData) -> String? {
+        choiceIds.first { !data.operatorIndependentWallets.contains($0) } ?? choiceIds.first
     }
 
     /// Detection selects a detected, offered operator only while the payer has not picked one by hand.

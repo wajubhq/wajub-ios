@@ -46,7 +46,7 @@ final class MobileMoneyTests: XCTestCase {
             let choices = vector["choices"]?.strings ?? []
             let country = vector["country"]?.string ?? ""
             let phone = vector["phone"]?.string ?? ""
-            var selection = choices.first
+            var selection = MobileMoneyForm.initialSelection(choiceIds: choices, data: data)
             var pickedByHand = false
             if let picked = vector["picked_by_hand"]?.string {
                 selection = picked
@@ -66,6 +66,13 @@ final class MobileMoneyTests: XCTestCase {
         form.pick("mtn")
         form.setPhone("69123456")
         XCTAssertEqual(form.selection, "mtn", "a pick by hand is never overridden")
+
+        // Before any number, never a wallet that takes any number: Express Union comes first here.
+        var sandbox = makeForm("session-sandbox-cm", config: "sdk-config-sandbox")
+        XCTAssertEqual(sandbox.choices.map(\.id), ["eu", "mtn", "orange"])
+        XCTAssertEqual(sandbox.selection, "mtn")
+        sandbox.setPhone("691234567")
+        XCTAssertEqual(sandbox.selection, "orange", "then detection decides")
     }
 
     /// MM-03 matches the preselection vectors

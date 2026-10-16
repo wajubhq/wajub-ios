@@ -1342,6 +1342,18 @@
     {
       "country": "CM",
       "choices": [
+        "eu",
+        "mtn",
+        "orange"
+      ],
+      "picked_by_hand": null,
+      "phone": "",
+      "expected_selection": "mtn",
+      "why": "before any number, the first choice that is no operator-independent wallet: Express Union came first"
+    },
+    {
+      "country": "CM",
+      "choices": [
         "mtn",
         "orange"
       ],
