@@ -135,9 +135,6 @@ struct MobileMoneyFormView: View {
                     BannerView(message: model.strings.operatorOutOfLimits(unavailable.label, limit: limitText(limit)),
                                foreground: style.warning, background: style.warningBackground, style: style)
                 }
-                if let warning = controller.warning {
-                    BannerView(message: warning.message, foreground: style.warning, background: style.warningBackground, style: style)
-                }
                 PrimaryButton(title: model.strings.pay(controller.formattedAmount), style: style, busy: controller.isPaying,
                               enabled: !form.hasNoOperator && !controller.isCancelling) {
                     controller.submitMobileMoney()

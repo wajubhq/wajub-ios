@@ -17,7 +17,6 @@ extension CheckoutController {
         guard canGoBack else { return }
         screen = .methods
         banner = nil
-        warning = nil
         fieldErrors = [:]
         update()
     }
@@ -25,7 +24,6 @@ extension CheckoutController {
     func openForm(_ method: CheckoutMethod) {
         currentMethod = method
         banner = nil
-        warning = nil
         fieldErrors = [:]
         switch method.kind {
         case .mobileMoney:
@@ -48,14 +46,12 @@ extension CheckoutController {
     public func setCountry(_ code: String) {
         mobileMoney?.setCountry(code)
         fieldErrors = [:]
-        warning = nil
         update()
     }
 
     public func setPhone(_ text: String) {
         mobileMoney?.setPhone(text)
         fieldErrors["data.phone"] = nil
-        warning = nil
         update()
     }
 
@@ -63,7 +59,6 @@ extension CheckoutController {
         mobileMoney?.pick(id)
         fieldErrors["data.operator"] = nil
         fieldErrors["data.phone"] = nil
-        warning = nil
         update()
     }
 
@@ -80,8 +75,7 @@ extension CheckoutController {
             update()
             return
         }
-        let validation = form.validate()
-        if let error = validation.error {
+        if let error = form.validate() {
             // The payer is told to pick in the list: show it.
             if error.code == WajubError.Code.operatorMismatch || error.code == WajubError.Code.operatorRequired {
                 mobileMoney?.openList()
@@ -90,7 +84,6 @@ extension CheckoutController {
             update()
             return
         }
-        warning = validation.warning
         guard let request = form.request(returnURL: options.returnURL) else { return }
         pay(channel: request.channel, data: request.data, family: "mobile_money", mobileMoney: true,
             phone: request.data["phone"]?.string)

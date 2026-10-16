@@ -168,28 +168,51 @@ public struct MobileMoneyData: Sendable {
     // MARK: Numbers
 
     /// Keeps the digits, dropping spaces, dashes and `+`. Digits typed on an Arabic, Persian or other
-    /// keyboard are read as the same digits.
+    /// keyboard are read as the same digits, so they show and count.
     public func sanitize(_ input: String) -> String {
         String(Digits.ascii(input).unicodeScalars.filter { ("0"..."9").contains($0) }.map(Character.init))
     }
 
-    /// The digits after the dial code, exactly as typed.
-    func typedNationalDigits(_ input: String, country: String) -> String {
-        var digits = sanitize(input)
-        if let dial = countries[country.uppercased()]?.dialDigits, !dial.isEmpty, digits.hasPrefix(dial) {
-            digits.removeFirst(dial.count)
-        }
-        return digits
+    /// The digits after the dial code as typed, and whether they are another country's number.
+    struct TypedNumber {
+        var digits: String
+        /// Written with `+` or `00` and another country's dial code.
+        var foreign: Bool
     }
 
-    /// The national number by the country's current numbering plan: without the dial code, with its
-    /// leading 0 only where the 0 is part of the number, and an earlier number in its current form
-    /// (Benin: `96 12 34 56` → `0196123456`).
-    public func nationalDigits(_ input: String, country: String) -> String {
-        guard let entry = countries[country.uppercased()] else {
-            return String(sanitize(input).drop { $0 == "0" })
+    /// The digits after the dial code, exactly as typed. A number written internationally (`+`, or the
+    /// international prefix `00`) loses its dial code, or is another country's when it has another
+    /// one; a number written nationally loses a dial code only when it is not already a national
+    /// number as typed (Ghana's numbers that start like its dial code).
+    func typedNumber(_ input: String, country: String, zeroZeroIsInternational: Bool = true) -> TypedNumber {
+        let digits = sanitize(input)
+        guard let entry = countries[country.uppercased()] else { return TypedNumber(digits: digits, foreign: false) }
+        let dial = entry.dialDigits
+        let firstMark = Digits.ascii(input).unicodeScalars.first { $0 == "+" || ("0"..."9").contains($0) }
+        var international: String?
+        if firstMark == "+" {
+            international = digits
+        } else if zeroZeroIsInternational, digits.hasPrefix("00") {
+            international = String(digits.dropFirst(2))
         }
-        var digits = typedNationalDigits(input, country: country)
+        if let international {
+            guard international.hasPrefix(dial) else { return TypedNumber(digits: international, foreign: true) }
+            return TypedNumber(digits: String(international.dropFirst(dial.count)), foreign: false)
+        }
+        if digits.hasPrefix(dial), !isNationalNumber(planDigits(digits, entry), entry) {
+            return TypedNumber(digits: String(digits.dropFirst(dial.count)), foreign: false)
+        }
+        return TypedNumber(digits: digits, foreign: false)
+    }
+
+    func typedNationalDigits(_ input: String, country: String) -> String {
+        typedNumber(input, country: country).digits
+    }
+
+    /// The typed digits by the country's current plan: an earlier number in its current form, then the
+    /// leading 0 left out, or kept (and given back) where it is part of the number.
+    func planDigits(_ typed: String, _ entry: Country) -> String {
+        var digits = typed
         if let earlier = entry.earlier, digits.count == earlier.length, let key = MobileMoneyData.longestKey(of: earlier, starting: digits) {
             digits = earlier.map[key, default: key] + digits.dropFirst(key.count)
         }
@@ -206,21 +229,43 @@ public struct MobileMoneyData: Sendable {
         return digits
     }
 
+    /// A complete national number of the country: its exact length, and its common start when it has one.
+    func isNationalNumber(_ national: String, _ entry: Country) -> Bool {
+        guard let length = entry.nationalNumberLength, national.count == length else { return false }
+        if let prefix = entry.numberPrefix, !national.hasPrefix(prefix) { return false }
+        return true
+    }
+
+    /// The national number by the country's current numbering plan: without the dial code, with its
+    /// leading 0 only where the 0 is part of the number, and an earlier number in its current form
+    /// (Benin: `96 12 34 56` → `0196123456`). Another country's number keeps its digits as written.
+    public func nationalDigits(_ input: String, country: String) -> String {
+        guard let entry = countries[country.uppercased()] else {
+            return String(sanitize(input).drop { $0 == "0" })
+        }
+        let typed = typedNumber(input, country: country)
+        return typed.foreign ? typed.digits : planDigits(typed.digits, entry)
+    }
+
     /// Whether the number is a complete number of the country (any 7 to 15 digits for a country the
-    /// SDK does not know).
+    /// SDK does not know). Another country's number, written with its dial code, is not.
     public func isValid(_ input: String, country: String) -> Bool {
         guard let entry = countries[country.uppercased()] else { return looseLength.contains(sanitize(input).count) }
-        let national = nationalDigits(input, country: country)
+        let typed = typedNumber(input, country: country)
+        guard !typed.foreign else { return false }
+        let national = planDigits(typed.digits, entry)
         if let length = entry.nationalNumberLength, national.count != length { return false }
         if let prefix = entry.numberPrefix, !national.hasPrefix(prefix) { return false }
         return true
     }
 
     /// The operator the number belongs to, as soon as its first digits say it; `nil` when they do not,
-    /// and for wallets that take a number from any network.
+    /// for another country's number, and for wallets that take a number from any network.
     public func detectOperator(_ input: String, country: String) -> String? {
         guard let entry = countries[country.uppercased()] else { return nil }
-        var digits = nationalDigits(input, country: country)
+        let typed = typedNumber(input, country: country)
+        guard !typed.foreign else { return nil }
+        var digits = planDigits(typed.digits, entry)
         if entry.numberPrefix != nil, !digits.isEmpty, !digits.hasPrefix("0") {
             // Still being typed without its 0, or the earlier way.
             if let earlier = entry.earlier, let key = MobileMoneyData.longestKey(of: earlier, starting: digits) {
@@ -236,20 +281,31 @@ public struct MobileMoneyData: Sendable {
         return nil
     }
 
-    /// The number in international format, as it is sent.
+    /// The number in international format, as it is sent; another country's number as written.
     public func e164(_ input: String, country: String) -> String {
         guard let entry = countries[country.uppercased()] else { return "+" + sanitize(input) }
-        return entry.dialCode + nationalDigits(input, country: country)
+        let typed = typedNumber(input, country: country)
+        return typed.foreign ? "+" + typed.digits : entry.dialCode + planDigits(typed.digits, entry)
     }
 
     // MARK: Sandbox test numbers
 
-    /// The sandbox test number `input` is, or `nil`. Only a sandbox payment takes test numbers.
+    /// The sandbox test number `input` is, or `nil`. Only a sandbox payment takes test numbers, and
+    /// never another country's.
     public func sandboxTestNumber(_ input: String, country: String) -> SandboxTestNumber? {
         let code = country.uppercased()
         guard let entry = countries[code], let prefixes = sandboxPrefixes[code], !prefixes.isEmpty else { return nil }
         let dial = entry.dialDigits
-        for reading in [dial + nationalDigits(input, country: code), dial + typedNationalDigits(input, country: code)] {
+        // By the plan; as typed after the dial code, its 0s kept; and with a leading 00 as typed digits.
+        var readings: [String] = []
+        let typed = typedNumber(input, country: code)
+        if !typed.foreign {
+            readings.append(dial + planDigits(typed.digits, entry))
+            readings.append(dial + typed.digits)
+        }
+        let asTyped = typedNumber(input, country: code, zeroZeroIsInternational: false)
+        if !asTyped.foreign { readings.append(dial + asTyped.digits) }
+        for reading in readings {
             for candidate in prefixes where reading.hasPrefix(candidate.prefix) {
                 if isSandboxOutcome(reading.dropFirst(candidate.prefix.count)) {
                     return SandboxTestNumber(operatorId: candidate.operatorId, e164: "+" + reading)

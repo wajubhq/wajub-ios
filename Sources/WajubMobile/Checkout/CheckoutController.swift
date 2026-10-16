@@ -39,7 +39,8 @@ public final class CheckoutController {
     public internal(set) var fieldErrors: [String: WajubError] = [:]
     /// A form-level error not tied to a field.
     public internal(set) var banner: WajubError?
-    /// Sandbox only: an operator mismatch that does not block.
+    /// Always `nil`: in a sandbox payment an operator mismatch blocks as it does in live.
+    @available(*, deprecated, message: "Always nil: in a sandbox payment an operator mismatch blocks as it does in live.")
     public internal(set) var warning: WajubError?
     /// A payment request or a verification is running (`PROCESSING` / `VERIFYING`).
     public internal(set) var isBusy = false

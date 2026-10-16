@@ -160,16 +160,16 @@ public struct MobileMoneyForm: Equatable, Sendable {
 
     // MARK: Submit
 
-    /// The first problem of README §6.3, or `nil`. In sandbox an `operator_mismatch` does not block (it is returned as a warning).
-    func validate() -> (error: WajubError?, warning: WajubError?) {
+    /// The first problem of the number and operator, or `nil`. In a sandbox payment a test number's
+    /// operator is the one it tests, and a mismatch blocks as in live.
+    func validate() -> WajubError? {
         // An operator out of its limits is not offered: never a mismatch toward it.
         let code = MobileMoneyForm.validationCode(phone: phone, country: country, choiceIds: enabledIds,
                                                   selection: selection, data: data, sandbox: sandbox)
-        guard let code else { return (nil, nil) }
+        guard let code else { return nil }
         var error = WajubError.catalogue(code, language, values: mismatchLabels)
         error.param = code == WajubError.Code.operatorRequired ? "data.operator" : "data.phone"
-        if code == WajubError.Code.operatorMismatch && sandbox { return (nil, error) }
-        return (error, nil)
+        return error
     }
 
     private var mismatchLabels: [String: String] {

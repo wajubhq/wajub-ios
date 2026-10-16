@@ -1011,8 +1011,18 @@
       "earlier": null,
       "placeholder": "841234567",
       "placeholder_formatted": "84 12 34 56 7",
-      "operators": [],
-      "prefix_rules": []
+      "operators": [
+        "mpesa"
+      ],
+      "prefix_rules": [
+        {
+          "starts_with": [
+            "84",
+            "85"
+          ],
+          "operator": "mpesa"
+        }
+      ]
     },
     "NE": {
       "name": "Niger",
@@ -1480,7 +1490,8 @@
         "KE",
         "TZ",
         "ET",
-        "CD"
+        "CD",
+        "MZ"
       ],
       "operator_independent": false,
       "brand": {

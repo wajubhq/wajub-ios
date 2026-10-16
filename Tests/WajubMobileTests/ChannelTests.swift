@@ -155,7 +155,7 @@ final class ChannelTests: XCTestCase {
         XCTAssertEqual(form.selection, "moov", "a disabled operator cannot be picked")
         form.setPhone("0501020304")
         XCTAssertEqual(form.selection, "moov", "nor preselected by detection")
-        XCTAssertNil(form.validate().error, "never a mismatch naming an operator that cannot be picked")
+        XCTAssertNil(form.validate(), "never a mismatch naming an operator that cannot be picked")
 
         // Every operator out of its limits: they are all listed with their limits, and Pay is disabled.
         let allOut = try SessionResponse(json: Fixtures.body("session-cm-aggregate").setting(["transaction", "amount_total"], to: 600_000))

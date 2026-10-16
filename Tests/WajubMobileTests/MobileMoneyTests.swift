@@ -28,9 +28,10 @@ final class MobileMoneyTests: XCTestCase {
         for vector in vectors {
             let country = vector["country"]?.string ?? ""
             let phone = vector["phone"]?.string ?? ""
-            XCTAssertEqual(data.detectOperator(phone, country: country), vector["detected"]?.string, "\(country) \(phone)")
+            let sandbox = vector["sandbox"]?.bool ?? false
+            XCTAssertEqual(data.detectOperator(phone, country: country, sandbox: sandbox), vector["detected"]?.string, "\(country) \(phone)")
             let code = MobileMoneyForm.validationCode(phone: phone, country: country, choiceIds: vector["choices"]?.strings ?? [],
-                                                      selection: vector["selected"]?.string, data: data)
+                                                      selection: vector["selected"]?.string, data: data, sandbox: sandbox)
             XCTAssertEqual(code, vector["expected"]?.string, "\(country) \(phone) \(vector["selected"]?.string ?? "")")
         }
         XCTAssertEqual(MobileMoneyForm.validationCode(phone: "677123456", country: "CM", choiceIds: [], selection: nil, data: data),
@@ -84,9 +85,9 @@ final class MobileMoneyTests: XCTestCase {
         XCTAssertTrue(form.isOperatorListVisible)
         XCTAssertEqual(form.selection, "mtn")
         form.setPhone("691234567")
-        XCTAssertEqual(form.validate().error?.code, WajubError.Code.operatorMismatch,
+        XCTAssertEqual(form.validate()?.code, WajubError.Code.operatorMismatch,
                        "the list it names is on screen")
-        XCTAssertEqual(form.validate().error?.message,
+        XCTAssertEqual(form.validate()?.message,
                        "This number belongs to Orange Money. Pick Orange Money in the list, or enter a MTN MoMo number.")
     }
 
@@ -213,17 +214,26 @@ final class MobileMoneyTests: XCTestCase {
         XCTAssertNil(form.choices.first { $0.id == "mtn" }?.logoURL, "only https logos")
     }
 
-    /// MM-08 does not block mismatches in sandbox
-    @MainActor func test_MM_08_doesNotBlockMismatchesInSandbox() async {
+    /// MM-08 reads mismatches in sandbox from the test number
+    @MainActor func test_MM_08_readsMismatchesInSandboxFromTheTestNumber() async {
+        // In a sandbox payment, Express Union's test number on MTN is a mismatch, and blocks as in live.
         let harness = Harness(session: "session-sandbox-cm")
         harness.transport.answer("process-processing-mobile-money-sandbox")
         let controller = await harness.start()
         controller.selectMethod("mobile_money")
         controller.setPhone("680000000")
-        controller.pickOperator("orange")
+        XCTAssertEqual(controller.mobileMoney?.detectedOperator, "eu")
+        controller.pickOperator("mtn")
+        controller.submitMobileMoney()
+        await settle()
+        XCTAssertTrue(harness.processBodies().isEmpty)
+        XCTAssertEqual(controller.fieldErrors["data.phone"]?.code, WajubError.Code.operatorMismatch)
+        // On the operator it tests, it goes through.
+        controller.pickOperator("eu")
         controller.submitMobileMoney()
         await waitUntil("process sent in sandbox") { harness.processBodies().count == 1 }
-        XCTAssertEqual(controller.warning?.code, WajubError.Code.operatorMismatch)
+        XCTAssertEqual(harness.processBodies()[0]["channel"]?.string, "cm.eu")
+        controller.hostGone()
 
         // The same mismatch in live blocks the submission.
         let live = Fixtures.body("session-sandbox-cm").setting(["transaction", "sandbox"], to: false)
