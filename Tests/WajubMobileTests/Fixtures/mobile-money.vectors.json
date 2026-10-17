@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "algorithms": "data/mobile-money.json `algorithms`",
   "numbers": [
     {
@@ -50,7 +50,7 @@
     {
       "input": "07 01 02 03 04",
       "country": "CI",
-      "national_digits": "701020304",
+      "national_digits": "0701020304",
       "valid": true,
       "detected_operator": "orange",
       "e164": "+2250701020304",
@@ -59,11 +59,31 @@
     {
       "input": "+2250501020304",
       "country": "CI",
-      "national_digits": "501020304",
+      "national_digits": "0501020304",
       "valid": true,
       "detected_operator": "mtn",
       "e164": "+2250501020304",
       "formatted": "22 50 50 10 20 30 4"
+    },
+    {
+      "input": "707000000",
+      "country": "CI",
+      "national_digits": "0707000000",
+      "valid": true,
+      "detected_operator": "orange",
+      "e164": "+2250707000000",
+      "formatted": "70 70 00 00 0",
+      "why": "typed without its 0: given back, a mobile range (07)"
+    },
+    {
+      "input": "07 07 00 00",
+      "country": "CI",
+      "national_digits": "07070000",
+      "valid": false,
+      "detected_operator": "orange",
+      "e164": "+22507070000",
+      "formatted": "07 07 00 00",
+      "why": "the 8-digit form from before 31 Jan 2021 is no Ivorian number"
     },
     {
       "input": "771234567",
@@ -88,9 +108,10 @@
       "country": "SN",
       "national_digits": "701234567",
       "valid": true,
-      "detected_operator": "orange",
+      "detected_operator": null,
       "e164": "+221701234567",
-      "formatted": "70 12 34 56 7"
+      "formatted": "70 12 34 56 7",
+      "why": "Expresso: no operator listed here"
     },
     {
       "input": "0244123456",
@@ -109,6 +130,83 @@
       "detected_operator": "airteltigo",
       "e164": "+233271234567",
       "formatted": "02 71 23 45 67"
+    },
+    {
+      "input": "233 123 456",
+      "country": "GH",
+      "national_digits": "233123456",
+      "valid": true,
+      "detected_operator": "airteltigo",
+      "e164": "+233233123456",
+      "formatted": "23 31 23 45 6",
+      "why": "an AT number typed without its 0: it starts like the dial code, and is a national number"
+    },
+    {
+      "input": "0233 123 456",
+      "country": "GH",
+      "national_digits": "233123456",
+      "valid": true,
+      "detected_operator": "airteltigo",
+      "e164": "+233233123456",
+      "formatted": "02 33 12 34 56"
+    },
+    {
+      "input": "+233 233 123 456",
+      "country": "GH",
+      "national_digits": "233123456",
+      "valid": true,
+      "detected_operator": "airteltigo",
+      "e164": "+233233123456",
+      "formatted": "23 32 33 12 34 56",
+      "why": "after a +, the dial code"
+    },
+    {
+      "input": "233233123456",
+      "country": "GH",
+      "national_digits": "233123456",
+      "valid": true,
+      "detected_operator": "airteltigo",
+      "e164": "+233233123456",
+      "formatted": "23 32 33 12 34 56",
+      "why": "the dial code without its +, then the AT number"
+    },
+    {
+      "input": "+233 24 412 3456",
+      "country": "GH",
+      "national_digits": "244123456",
+      "valid": true,
+      "detected_operator": "mtn",
+      "e164": "+233244123456",
+      "formatted": "23 32 44 12 34 56"
+    },
+    {
+      "input": "233244123456",
+      "country": "GH",
+      "national_digits": "244123456",
+      "valid": true,
+      "detected_operator": "mtn",
+      "e164": "+233244123456",
+      "formatted": "23 32 44 12 34 56",
+      "why": "the dial code without its +"
+    },
+    {
+      "input": "00233 233 123 456",
+      "country": "GH",
+      "national_digits": "233123456",
+      "valid": true,
+      "detected_operator": "airteltigo",
+      "e164": "+233233123456",
+      "formatted": "00 23 32 33 12 34 56",
+      "why": "an AT number after 00 and the dial code: the Ghana rule is for national writing only"
+    },
+    {
+      "input": "00233 24 412 3456",
+      "country": "GH",
+      "national_digits": "244123456",
+      "valid": true,
+      "detected_operator": "mtn",
+      "e164": "+233244123456",
+      "formatted": "00 23 32 44 12 34 56"
     },
     {
       "input": "08031234567",
@@ -149,18 +247,67 @@
     {
       "input": "0190123456",
       "country": "BJ",
-      "national_digits": "190123456",
+      "national_digits": "0190123456",
+      "valid": true,
+      "detected_operator": "mtn",
+      "e164": "+2290190123456",
+      "formatted": "01 90 12 34 56"
+    },
+    {
+      "input": "96 12 34 56",
+      "country": "BJ",
+      "national_digits": "0196123456",
+      "valid": true,
+      "detected_operator": "mtn",
+      "e164": "+2290196123456",
+      "formatted": "96 12 34 56",
+      "why": "the 8-digit form from before 30 Nov 2024 takes 01 in front"
+    },
+    {
+      "input": "+229 01 95 12 34 56",
+      "country": "BJ",
+      "national_digits": "0195123456",
+      "valid": true,
+      "detected_operator": "moov",
+      "e164": "+2290195123456",
+      "formatted": "22 90 19 51 23 45 6"
+    },
+    {
+      "input": "0140123456",
+      "country": "BJ",
+      "national_digits": "0140123456",
       "valid": true,
       "detected_operator": null,
-      "e164": "+229190123456",
-      "formatted": "01 90 12 34 56"
+      "e164": "+2290140123456",
+      "formatted": "01 40 12 34 56",
+      "why": "Celtiis: no operator listed here"
+    },
+    {
+      "input": "30 00 00 00",
+      "country": "BJ",
+      "national_digits": "30000000",
+      "valid": false,
+      "detected_operator": null,
+      "e164": "+22930000000",
+      "formatted": "30 00 00 00",
+      "why": "01 30 … is no mobile range: not repaired, refused"
+    },
+    {
+      "input": "96",
+      "country": "BJ",
+      "national_digits": "96",
+      "valid": false,
+      "detected_operator": "mtn",
+      "e164": "+22996",
+      "formatted": "96",
+      "why": "as it is typed, the earlier form already names its operator"
     },
     {
       "input": "0812345678",
       "country": "CD",
       "national_digits": "812345678",
       "valid": true,
-      "detected_operator": null,
+      "detected_operator": "vodacom",
       "e164": "+243812345678",
       "formatted": "08 12 34 56 78"
     },
@@ -199,6 +346,780 @@
       "detected_operator": null,
       "e164": "+237",
       "formatted": ""
+    },
+    {
+      "input": "0101020304",
+      "country": "CI",
+      "national_digits": "0101020304",
+      "valid": true,
+      "detected_operator": "moov",
+      "e164": "+2250101020304",
+      "formatted": "01 01 02 03 04"
+    },
+    {
+      "input": "0303000000",
+      "country": "CI",
+      "national_digits": "0303000000",
+      "valid": true,
+      "detected_operator": null,
+      "e164": "+2250303000000",
+      "formatted": "03 03 00 00 00"
+    },
+    {
+      "input": "303000000",
+      "country": "CI",
+      "national_digits": "303000000",
+      "valid": false,
+      "detected_operator": null,
+      "e164": "+225303000000",
+      "formatted": "30 30 00 00 0",
+      "why": "03 is no mobile range: the 0 is not given back"
+    },
+    {
+      "input": "٠٧٠٧٠٠٠٠٠٠",
+      "country": "CI",
+      "national_digits": "0707000000",
+      "valid": true,
+      "detected_operator": "orange",
+      "e164": "+2250707000000",
+      "formatted": "07 07 00 00 00",
+      "why": "Arabic-Indic digits, read as ASCII"
+    },
+    {
+      "input": "+۲۲۵ ۰۵ ۰۵ ۰۰ ۰۰ ۰۰",
+      "country": "CI",
+      "national_digits": "0505000000",
+      "valid": true,
+      "detected_operator": "mtn",
+      "e164": "+2250505000000",
+      "formatted": "22 50 50 50 00 00 0",
+      "why": "Persian digits, read as ASCII"
+    },
+    {
+      "input": "00225 07 01 02 03 04",
+      "country": "CI",
+      "national_digits": "0701020304",
+      "valid": true,
+      "detected_operator": "orange",
+      "e164": "+2250701020304",
+      "formatted": "00 22 50 70 10 20 30 4",
+      "why": "the international prefix 00 reads like +"
+    },
+    {
+      "input": "00225 05 01 02 03 04",
+      "country": "CI",
+      "national_digits": "0501020304",
+      "valid": true,
+      "detected_operator": "mtn",
+      "e164": "+2250501020304",
+      "formatted": "00 22 50 50 10 20 30 4"
+    },
+    {
+      "input": "00237 677 12 34 56",
+      "country": "CI",
+      "national_digits": "237677123456",
+      "valid": false,
+      "detected_operator": null,
+      "e164": "+237677123456",
+      "formatted": "00 23 76 77 12 34 56",
+      "why": "another country's dial code after 00: that country's number"
+    },
+    {
+      "input": "+237 677 12 34 56",
+      "country": "CI",
+      "national_digits": "237677123456",
+      "valid": false,
+      "detected_operator": null,
+      "e164": "+237677123456",
+      "formatted": "23 76 77 12 34 56",
+      "why": "the same after +"
+    },
+    {
+      "input": "٠٠٢٢٥ ٠٧ ٠١ ٠٢ ٠٣ ٠٤",
+      "country": "CI",
+      "national_digits": "0701020304",
+      "valid": true,
+      "detected_operator": "orange",
+      "e164": "+2250701020304",
+      "formatted": "00 22 50 70 10 20 30 4",
+      "why": "Arabic-Indic digits, then 00"
+    },
+    {
+      "input": "196123456",
+      "country": "BJ",
+      "national_digits": "0196123456",
+      "valid": true,
+      "detected_operator": "mtn",
+      "e164": "+2290196123456",
+      "formatted": "19 61 23 45 6"
+    },
+    {
+      "input": "0128123456",
+      "country": "BJ",
+      "national_digits": "0128123456",
+      "valid": true,
+      "detected_operator": null,
+      "e164": "+2290128123456",
+      "formatted": "01 28 12 34 56"
+    },
+    {
+      "input": "00229 01 96 12 34 56",
+      "country": "BJ",
+      "national_digits": "0196123456",
+      "valid": true,
+      "detected_operator": "mtn",
+      "e164": "+2290196123456",
+      "formatted": "00 22 90 19 61 23 45 6"
+    },
+    {
+      "input": "00229 96 12 34 56",
+      "country": "BJ",
+      "national_digits": "0196123456",
+      "valid": true,
+      "detected_operator": "mtn",
+      "e164": "+2290196123456",
+      "formatted": "00 22 99 61 23 45 6",
+      "why": "the 8-digit form after 00 and the dial code"
+    },
+    {
+      "input": "06 123 45 67",
+      "country": "CG",
+      "national_digits": "061234567",
+      "valid": true,
+      "detected_operator": "mtn",
+      "e164": "+242061234567",
+      "formatted": "06 12 34 56 7",
+      "why": "the 0 is part of a Congolese number (+242 06…)"
+    },
+    {
+      "input": "61234567",
+      "country": "CG",
+      "national_digits": "061234567",
+      "valid": true,
+      "detected_operator": "mtn",
+      "e164": "+242061234567",
+      "formatted": "61 23 45 67",
+      "why": "typed without its 0: given back"
+    },
+    {
+      "input": "051234567",
+      "country": "CG",
+      "national_digits": "051234567",
+      "valid": true,
+      "detected_operator": "airtel",
+      "e164": "+242051234567",
+      "formatted": "05 12 34 56 7"
+    },
+    {
+      "input": "261234567",
+      "country": "CG",
+      "national_digits": "261234567",
+      "valid": false,
+      "detected_operator": null,
+      "e164": "+242261234567",
+      "formatted": "26 12 34 56 7",
+      "why": "every Congolese mobile number starts with 0"
+    },
+    {
+      "input": "05 12 34 56",
+      "country": "BF",
+      "national_digits": "05123456",
+      "valid": true,
+      "detected_operator": "orange",
+      "e164": "+22605123456",
+      "formatted": "05 12 34 56",
+      "why": "Burkina Faso's 0X ranges keep their 0"
+    },
+    {
+      "input": "70 12 34 56",
+      "country": "BF",
+      "national_digits": "70123456",
+      "valid": true,
+      "detected_operator": "moov",
+      "e164": "+22670123456",
+      "formatted": "70 12 34 56",
+      "why": "beside eight-digit numbers without it"
+    },
+    {
+      "input": "5123456",
+      "country": "BF",
+      "national_digits": "05123456",
+      "valid": true,
+      "detected_operator": "orange",
+      "e164": "+22605123456",
+      "formatted": "51 23 45 6",
+      "why": "typed without its 0: given back"
+    },
+    {
+      "input": "58123456",
+      "country": "BF",
+      "national_digits": "58123456",
+      "valid": true,
+      "detected_operator": null,
+      "e164": "+22658123456",
+      "formatted": "58 12 34 56",
+      "why": "Telecel Faso: no operator listed here"
+    },
+    {
+      "input": "070123456",
+      "country": "BF",
+      "national_digits": "070123456",
+      "valid": false,
+      "detected_operator": "orange",
+      "e164": "+226070123456",
+      "formatted": "07 01 23 45 6",
+      "why": "nine digits: no Burkinabè number"
+    },
+    {
+      "input": "00226 05 12 34 56",
+      "country": "BF",
+      "national_digits": "05123456",
+      "valid": true,
+      "detected_operator": "orange",
+      "e164": "+22605123456",
+      "formatted": "00 22 60 51 23 45 6"
+    },
+    {
+      "input": "00226 70 12 34 56",
+      "country": "BF",
+      "national_digits": "70123456",
+      "valid": true,
+      "detected_operator": "moov",
+      "e164": "+22670123456",
+      "formatted": "00 22 67 01 23 45 6"
+    },
+    {
+      "input": "066 12 34 56",
+      "country": "GA",
+      "national_digits": "66123456",
+      "valid": true,
+      "detected_operator": "moov",
+      "e164": "+24166123456",
+      "formatted": "06 61 23 45 6",
+      "why": "nine digits nationally, the 0 a trunk prefix (since 6 Apr 2024)"
+    },
+    {
+      "input": "+241 77 28 01 50",
+      "country": "GA",
+      "national_digits": "77280150",
+      "valid": true,
+      "detected_operator": "airtel",
+      "e164": "+24177280150",
+      "formatted": "24 17 72 80 15 0"
+    },
+    {
+      "input": "06 12 34 56",
+      "country": "GA",
+      "national_digits": "66123456",
+      "valid": true,
+      "detected_operator": "moov",
+      "e164": "+24166123456",
+      "formatted": "06 12 34 56",
+      "why": "the 8-digit form from before 6 Apr 2024: 06 became 066"
+    },
+    {
+      "input": "07 28 01 50",
+      "country": "GA",
+      "national_digits": "77280150",
+      "valid": true,
+      "detected_operator": "airtel",
+      "e164": "+24177280150",
+      "formatted": "07 28 01 50",
+      "why": "the 8-digit form: 07 became 077"
+    },
+    {
+      "input": "6612345",
+      "country": "GA",
+      "national_digits": "6612345",
+      "valid": false,
+      "detected_operator": "moov",
+      "e164": "+2416612345",
+      "formatted": "66 12 34 5"
+    },
+    {
+      "input": "00241 66 12 34 56",
+      "country": "GA",
+      "national_digits": "66123456",
+      "valid": true,
+      "detected_operator": "moov",
+      "e164": "+24166123456",
+      "formatted": "00 24 16 61 23 45 6"
+    },
+    {
+      "input": "00241 06 12 34 56",
+      "country": "GA",
+      "national_digits": "66123456",
+      "valid": true,
+      "detected_operator": "moov",
+      "e164": "+24166123456",
+      "formatted": "00 24 10 61 23 45 6",
+      "why": "the 8-digit form of before 6 Apr 2024, after 00"
+    },
+    {
+      "input": "0733123456",
+      "country": "KE",
+      "national_digits": "733123456",
+      "valid": true,
+      "detected_operator": "airtel",
+      "e164": "+254733123456",
+      "formatted": "07 33 12 34 56",
+      "why": "Airtel's range, not M-Pesa's"
+    },
+    {
+      "input": "0761123456",
+      "country": "KE",
+      "national_digits": "761123456",
+      "valid": true,
+      "detected_operator": null,
+      "e164": "+254761123456",
+      "formatted": "07 61 12 34 56",
+      "why": "Telkom: no operator listed here"
+    },
+    {
+      "input": "684123456",
+      "country": "CM",
+      "national_digits": "684123456",
+      "valid": true,
+      "detected_operator": null,
+      "e164": "+237684123456",
+      "formatted": "68 41 23 45 6",
+      "why": "Nexttel: no operator listed here"
+    },
+    {
+      "input": "686123456",
+      "country": "CM",
+      "national_digits": "686123456",
+      "valid": true,
+      "detected_operator": "orange",
+      "e164": "+237686123456",
+      "formatted": "68 61 23 45 6",
+      "why": "Orange's 686-689, not MTN's"
+    },
+    {
+      "input": "00 237 6 77 12 34 56",
+      "country": "CM",
+      "national_digits": "677123456",
+      "valid": true,
+      "detected_operator": "mtn",
+      "e164": "+237677123456",
+      "formatted": "00 23 76 77 12 34 56"
+    },
+    {
+      "input": "00225 07 01 02 03 04",
+      "country": "CM",
+      "national_digits": "2250701020304",
+      "valid": false,
+      "detected_operator": null,
+      "e164": "+2250701020304",
+      "formatted": "00 22 50 70 10 20 30 4",
+      "why": "Côte d'Ivoire's number in Cameroon: refused"
+    },
+    {
+      "input": "0721234567",
+      "country": "TZ",
+      "national_digits": "721234567",
+      "valid": true,
+      "detected_operator": "mpesa",
+      "e164": "+255721234567",
+      "formatted": "07 21 23 45 67"
+    },
+    {
+      "input": "0621234567",
+      "country": "TZ",
+      "national_digits": "621234567",
+      "valid": true,
+      "detected_operator": "halopesa",
+      "e164": "+255621234567",
+      "formatted": "06 21 23 45 67"
+    },
+    {
+      "input": "0781234567",
+      "country": "RW",
+      "national_digits": "781234567",
+      "valid": true,
+      "detected_operator": "mtn",
+      "e164": "+250781234567",
+      "formatted": "07 81 23 45 67"
+    },
+    {
+      "input": "90123456",
+      "country": "TG",
+      "national_digits": "90123456",
+      "valid": true,
+      "detected_operator": "tmoney",
+      "e164": "+22890123456",
+      "formatted": "90 12 34 56"
+    },
+    {
+      "input": "96123456",
+      "country": "TG",
+      "national_digits": "96123456",
+      "valid": true,
+      "detected_operator": "moov",
+      "e164": "+22896123456",
+      "formatted": "96 12 34 56"
+    },
+    {
+      "input": "661234567",
+      "country": "GN",
+      "national_digits": "661234567",
+      "valid": true,
+      "detected_operator": "mtn",
+      "e164": "+224661234567",
+      "formatted": "66 12 34 56 7"
+    },
+    {
+      "input": "70123456",
+      "country": "ML",
+      "national_digits": "70123456",
+      "valid": true,
+      "detected_operator": "orange",
+      "e164": "+22370123456",
+      "formatted": "70 12 34 56"
+    },
+    {
+      "input": "0961234567",
+      "country": "ZM",
+      "national_digits": "961234567",
+      "valid": true,
+      "detected_operator": "mtn",
+      "e164": "+260961234567",
+      "formatted": "09 61 23 45 67"
+    },
+    {
+      "input": "0886123456",
+      "country": "LR",
+      "national_digits": "886123456",
+      "valid": true,
+      "detected_operator": "mtn",
+      "e164": "+231886123456",
+      "formatted": "08 86 12 34 56"
+    },
+    {
+      "input": "841234567",
+      "country": "MZ",
+      "national_digits": "841234567",
+      "valid": true,
+      "detected_operator": "mpesa",
+      "e164": "+258841234567",
+      "formatted": "84 12 34 56 7",
+      "why": "Vodacom's 84: M-Pesa"
+    },
+    {
+      "input": "+258 86 123 4567",
+      "country": "MZ",
+      "national_digits": "861234567",
+      "valid": true,
+      "detected_operator": null,
+      "e164": "+258861234567",
+      "formatted": "25 88 61 23 45 67",
+      "why": "Movitel: no operator listed here"
+    },
+    {
+      "input": "01001234567",
+      "country": "EG",
+      "national_digits": "1001234567",
+      "valid": true,
+      "detected_operator": "vodafone",
+      "e164": "+201001234567",
+      "formatted": "01 00 12 34 56 7"
+    },
+    {
+      "input": "66123456",
+      "country": "TD",
+      "national_digits": "66123456",
+      "valid": true,
+      "detected_operator": null,
+      "e164": "+23566123456",
+      "formatted": "66 12 34 56"
+    },
+    {
+      "input": "72123456",
+      "country": "CF",
+      "national_digits": "72123456",
+      "valid": true,
+      "detected_operator": null,
+      "e164": "+23672123456",
+      "formatted": "72 12 34 56"
+    },
+    {
+      "input": "0991234567",
+      "country": "MW",
+      "national_digits": "991234567",
+      "valid": true,
+      "detected_operator": "airtel",
+      "e164": "+265991234567",
+      "formatted": "09 91 23 45 67"
+    },
+    {
+      "input": "0912345678",
+      "country": "ET",
+      "national_digits": "912345678",
+      "valid": true,
+      "detected_operator": null,
+      "e164": "+251912345678",
+      "formatted": "09 12 34 56 78"
+    },
+    {
+      "input": "0612345678",
+      "country": "MA",
+      "national_digits": "612345678",
+      "valid": true,
+      "detected_operator": "orange",
+      "e164": "+212612345678",
+      "formatted": "06 12 34 56 78"
+    },
+    {
+      "input": "0821234567",
+      "country": "ZA",
+      "national_digits": "821234567",
+      "valid": true,
+      "detected_operator": null,
+      "e164": "+27821234567",
+      "formatted": "08 21 23 45 67"
+    },
+    {
+      "input": "76123456",
+      "country": "SL",
+      "national_digits": "76123456",
+      "valid": true,
+      "detected_operator": "orange",
+      "e164": "+23276123456",
+      "formatted": "76 12 34 56"
+    },
+    {
+      "input": "08021234567",
+      "country": "NG",
+      "national_digits": "8021234567",
+      "valid": true,
+      "detected_operator": "airtel",
+      "e164": "+2348021234567",
+      "formatted": "08 02 12 34 56 7"
+    },
+    {
+      "input": "0791234567",
+      "country": "UG",
+      "national_digits": "791234567",
+      "valid": true,
+      "detected_operator": "mtn",
+      "e164": "+256791234567",
+      "formatted": "07 91 23 45 67"
+    }
+  ],
+  "sandbox_numbers": [
+    {
+      "input": "+229900000000",
+      "country": "BJ",
+      "operator": "mtn",
+      "e164": "+229900000000",
+      "why": "documented: sent as typed"
+    },
+    {
+      "input": "+22991000000",
+      "country": "BJ",
+      "operator": "moov",
+      "e164": "+2290191000000"
+    },
+    {
+      "input": "90 00 00 00",
+      "country": "BJ",
+      "operator": "mtn",
+      "e164": "+2290190000000",
+      "why": "the 8-digit form reads as +229 01 90…, its ten-digit form"
+    },
+    {
+      "input": "0191000002",
+      "country": "BJ",
+      "operator": "moov",
+      "e164": "+2290191000002"
+    },
+    {
+      "input": "+2290197000004",
+      "country": "BJ",
+      "operator": "glo",
+      "e164": "+2290197000004"
+    },
+    {
+      "input": "0196123456",
+      "country": "BJ",
+      "operator": null,
+      "e164": null,
+      "why": "a real number: no test number"
+    },
+    {
+      "input": "+225070000000",
+      "country": "CI",
+      "operator": "orange",
+      "e164": "+225070000000",
+      "why": "documented: no valid Ivorian number, a test number"
+    },
+    {
+      "input": "07000000",
+      "country": "CI",
+      "operator": "orange",
+      "e164": "+22507000000",
+      "why": "no valid Ivorian number, a test number"
+    },
+    {
+      "input": "0700000000",
+      "country": "CI",
+      "operator": "orange",
+      "e164": "+2250700000000"
+    },
+    {
+      "input": "05 00 00 00 01",
+      "country": "CI",
+      "operator": "mtn",
+      "e164": "+2250500000001"
+    },
+    {
+      "input": "03 00 00 00 09",
+      "country": "CI",
+      "operator": "wave",
+      "e164": "+2250300000009"
+    },
+    {
+      "input": "0712345678",
+      "country": "CI",
+      "operator": null,
+      "e164": null,
+      "why": "no outcome suffix"
+    },
+    {
+      "input": "0000000",
+      "country": "GA",
+      "operator": "airtel",
+      "e164": "+2410000000",
+      "why": "Airtel's documented prefix is +241 0: read as typed"
+    },
+    {
+      "input": "6000001",
+      "country": "GA",
+      "operator": "moov",
+      "e164": "+2416000001"
+    },
+    {
+      "input": "066 00 00 00",
+      "country": "GA",
+      "operator": "moov",
+      "e164": "+24166000000"
+    },
+    {
+      "input": "077 00 00 02",
+      "country": "GA",
+      "operator": "airtel",
+      "e164": "+24177000002"
+    },
+    {
+      "input": "06000000",
+      "country": "CG",
+      "operator": "mtn",
+      "e164": "+24206000000"
+    },
+    {
+      "input": "+242040000003",
+      "country": "CG",
+      "operator": "airtel",
+      "e164": "+242040000003"
+    },
+    {
+      "input": "70000000",
+      "country": "BF",
+      "operator": "orange",
+      "e164": "+22670000000"
+    },
+    {
+      "input": "71000001",
+      "country": "BF",
+      "operator": "moov",
+      "e164": "+22671000001"
+    },
+    {
+      "input": "670000000",
+      "country": "CM",
+      "operator": "mtn",
+      "e164": "+237670000000"
+    },
+    {
+      "input": "+2376700000000",
+      "country": "CM",
+      "operator": "mtn",
+      "e164": "+2376700000000"
+    },
+    {
+      "input": "680000000",
+      "country": "CM",
+      "operator": "eu",
+      "e164": "+237680000000",
+      "why": "Express Union in sandbox, MTN in reality"
+    },
+    {
+      "input": "0240000003",
+      "country": "GH",
+      "operator": "mtn",
+      "e164": "+233240000003"
+    },
+    {
+      "input": "8000000000",
+      "country": "NG",
+      "operator": "mtn",
+      "e164": "+2348000000000"
+    },
+    {
+      "input": "0780000000",
+      "country": "KE",
+      "operator": "airtel",
+      "e164": "+254780000000"
+    },
+    {
+      "input": "+2761000000",
+      "country": "ZA",
+      "operator": "capitec",
+      "e164": "+2761000000"
+    },
+    {
+      "input": "990000000",
+      "country": "MW",
+      "operator": "airtel",
+      "e164": "+265990000000"
+    },
+    {
+      "input": "0670000001",
+      "country": "TZ",
+      "operator": "airtel",
+      "e164": "+255670000001"
+    },
+    {
+      "input": "123",
+      "country": "CM",
+      "operator": null,
+      "e164": null
+    },
+    {
+      "input": "00225 07 000000",
+      "country": "CI",
+      "operator": "orange",
+      "e164": "+22507000000",
+      "why": "the documented number after 00 and the dial code"
+    },
+    {
+      "input": "00229 91 00 00 00",
+      "country": "BJ",
+      "operator": "moov",
+      "e164": "+2290191000000"
+    },
+    {
+      "input": "00241 0 000000",
+      "country": "GA",
+      "operator": "airtel",
+      "e164": "+2410000000"
+    },
+    {
+      "input": "00237 670000000",
+      "country": "CI",
+      "operator": null,
+      "e164": null,
+      "why": "Cameroon's test number in Côte d'Ivoire: another country's"
     }
   ],
   "validation_and_mismatch": [
@@ -271,9 +1192,20 @@
       ],
       "selected": "moov",
       "phone": "0190123456",
+      "expected": "operator_mismatch",
+      "detected": "mtn"
+    },
+    {
+      "country": "BJ",
+      "choices": [
+        "mtn",
+        "moov"
+      ],
+      "selected": "mtn",
+      "phone": "0140123456",
       "expected": null,
       "detected": null,
-      "why": "no prefix rules for BJ"
+      "why": "Celtiis has no prefix rule"
     },
     {
       "country": "CM",
@@ -297,6 +1229,103 @@
       "expected": "invalid_phone",
       "detected": "mtn",
       "why": "length is checked before the mismatch"
+    },
+    {
+      "country": "CG",
+      "choices": [
+        "mtn",
+        "airtel"
+      ],
+      "selected": "airtel",
+      "phone": "06 123 45 67",
+      "expected": "operator_mismatch",
+      "detected": "mtn"
+    },
+    {
+      "country": "GA",
+      "choices": [
+        "airtel",
+        "moov"
+      ],
+      "selected": "airtel",
+      "phone": "066 12 34 56",
+      "expected": "operator_mismatch",
+      "detected": "moov"
+    },
+    {
+      "country": "KE",
+      "choices": [
+        "mpesa",
+        "airtel"
+      ],
+      "selected": "airtel",
+      "phone": "0733123456",
+      "expected": null,
+      "detected": "airtel",
+      "why": "Airtel's range, which the web read as M-Pesa's"
+    },
+    {
+      "country": "BF",
+      "choices": [
+        "orange",
+        "moov"
+      ],
+      "selected": "moov",
+      "phone": "070123456",
+      "expected": "invalid_phone",
+      "detected": "orange",
+      "why": "length is checked before the mismatch"
+    },
+    {
+      "country": "BJ",
+      "choices": [
+        "mtn",
+        "moov"
+      ],
+      "selected": "mtn",
+      "phone": "91 00 00 00",
+      "sandbox": true,
+      "expected": "operator_mismatch",
+      "detected": "moov",
+      "why": "a Moov test number (+229 91): the sandbox refuses it on bj.mtn"
+    },
+    {
+      "country": "CM",
+      "choices": [
+        "mtn",
+        "orange",
+        "eu"
+      ],
+      "selected": "mtn",
+      "phone": "680000000",
+      "sandbox": true,
+      "expected": "operator_mismatch",
+      "detected": "eu",
+      "why": "+23768 tests Express Union, where the numbering plan has MTN"
+    },
+    {
+      "country": "CM",
+      "choices": [
+        "mtn",
+        "orange"
+      ],
+      "selected": "mtn",
+      "phone": "670000000",
+      "sandbox": true,
+      "expected": null,
+      "detected": "mtn"
+    },
+    {
+      "country": "CI",
+      "choices": [
+        "mtn",
+        "orange"
+      ],
+      "selected": "orange",
+      "phone": "00237 677 12 34 56",
+      "expected": "invalid_phone",
+      "detected": null,
+      "why": "another country's number"
     }
   ],
   "preselection": [
@@ -309,6 +1338,18 @@
       "picked_by_hand": null,
       "phone": "691234567",
       "expected_selection": "orange"
+    },
+    {
+      "country": "CM",
+      "choices": [
+        "eu",
+        "mtn",
+        "orange"
+      ],
+      "picked_by_hand": null,
+      "phone": "",
+      "expected_selection": "mtn",
+      "why": "before any number, the first choice that is no operator-independent wallet: Express Union came first"
     },
     {
       "country": "CM",
@@ -343,6 +1384,28 @@
       "phone": "761234567",
       "expected_selection": "orange",
       "why": "detected free is not offered: the default first choice stays"
+    },
+    {
+      "country": "BJ",
+      "choices": [
+        "mtn",
+        "moov"
+      ],
+      "picked_by_hand": null,
+      "phone": "95 12 34 56",
+      "expected_selection": "moov",
+      "why": "the 8-digit form names Moov (01 95)"
+    },
+    {
+      "country": "GA",
+      "choices": [
+        "airtel",
+        "moov"
+      ],
+      "picked_by_hand": null,
+      "phone": "07 28 01 50",
+      "expected_selection": "airtel",
+      "why": "the 8-digit form names Airtel (077)"
     }
   ],
   "operator_hint": [

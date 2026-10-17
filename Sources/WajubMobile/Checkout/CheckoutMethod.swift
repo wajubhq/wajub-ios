@@ -1,12 +1,12 @@
 import Foundation
 
-/// How the card channel is paid (README §7).
+/// How the card is paid.
 public enum CardFlavour: Equatable, Sendable {
-    /// A provider-hosted card session (Paystack, Flutterwave, Adyen): contact fields, then the provider's page.
+    /// The provider's own card session: contact fields, then the provider's page.
     case clientSession(fields: [String])
     /// Stripe: your `CardCollector` produces a `pm_…`.
     case stripe(publishableKey: String)
-    /// The provider's card page, after its `required_fields`.
+    /// The provider's card page, after the contact fields it asks for.
     case hostedRedirect(fields: [String])
     /// The sandbox test-card form.
     case sandboxForm
@@ -32,13 +32,17 @@ public struct CheckoutMethod: Equatable, Sendable, Identifiable {
     public var kind: Kind
     /// In the sheet's language.
     public var name: String
+    /// The method's logo URL, often an SVG. `drawableLogo` is the one iOS can draw.
     public var logo: String?
-    /// The session channels behind it, in API order.
+    /// The payment's channels behind it, in order.
     public var channels: [SessionChannel]
     /// Set when the amount is out of the channel's limits: the method is shown disabled.
     public var limit: AmountLimit?
 
     public var isEnabled: Bool { limit == nil }
+
+    /// The logo iOS can draw (a PNG where Wajub has one, never an SVG), or `nil`: draw the method's symbol.
+    public var drawableLogo: String? { channels.first?.drawableLogo }
 
     /// `mobile_money`, `card` or `wallet`: the `method` of the callbacks.
     public var family: String {
@@ -73,12 +77,15 @@ enum MethodResolver {
         }
     }
 
-    /// A Mobile Money channel's sdk-config entry, by raw slug: an aggregate uses its members' entries
-    /// (`cm.mtn`, not `cm.mobile`). Without one (sandbox), `form` + `phone`.
+    /// A Mobile Money channel's sdk-config entry, under the session's slug. An aggregate has its own
+    /// entry (`cm.mobile`) and keeps its members' (`cm.mtn`): one operator uses its member's entry, the
+    /// aggregate its own, else (an older answer without it) its members'. Without any entry, `form` + `phone`.
     static func mobileMoneyConfig(_ channel: SessionChannel, operatorSlug: String? = nil, config: SdkConfigResponse?) -> SdkChannelConfig {
         let fallback = SdkChannelConfig(sdk: "form", requiredFields: ["phone"])
         guard let config else { return fallback }
         if channel.isAggregate {
+            if let operatorSlug, let entry = config.channels[operatorSlug] { return entry }
+            if let entry = config.channels[channel.slug] { return entry }
             let slugs = operatorSlug.map { [$0] } ?? channel.operators.map(\.slug)
             return slugs.lazy.compactMap { config.channels[$0] }.first ?? fallback
         }
@@ -119,17 +126,17 @@ enum MethodResolver {
         for channel in shown {
             if channel.isMobileMoney {
                 guard channel == mobileMoneyChannels.first else { continue }
-                let limits = mobileMoneyChannels.map { limit($0, amount: amount) }
+                let limits = mobileMoneyChannels.map { limit($0, amount: $0.amountTotal ?? amount) }
                 methods.append(CheckoutMethod(id: "mobile_money", kind: .mobileMoney, name: strings.mobileMoney, logo: channel.logo,
                                               channels: mobileMoneyChannels,
                                               limit: limits.contains(where: { $0 == nil }) ? nil : limits.first ?? nil))
             } else if channel.type == "card",
                       let flavour = cardFlavour(channel, config: config, sandbox: session.transaction.sandbox, hasCardCollector: hasCardCollector) {
                 methods.append(CheckoutMethod(id: "card", kind: .card(flavour), name: channel.localizedName(language), logo: channel.logo,
-                                              channels: [channel], limit: limit(channel, amount: amount)))
+                                              channels: [channel], limit: limit(channel, amount: channel.amountTotal ?? amount)))
             } else {
                 methods.append(CheckoutMethod(id: channel.slug, kind: .wallet, name: channel.localizedName(language), logo: channel.logo,
-                                              channels: [channel], limit: limit(channel, amount: amount)))
+                                              channels: [channel], limit: limit(channel, amount: channel.amountTotal ?? amount)))
             }
         }
         return methods

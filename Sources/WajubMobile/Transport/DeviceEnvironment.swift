@@ -3,11 +3,11 @@ import Foundation
 import UIKit
 #endif
 
-/// The SDK's name and version, as sent in `X-Wajub-Client`.
+/// The SDK's version.
 public enum WajubSDK {
-    public static let version = "1.0.0"
-    /// The contract this SDK implements.
-    public static let specVersion = "2.0"
+    public static let version = "1.1.0"
+    /// The version of Wajub's mobile checkout this SDK supports.
+    public static let specVersion = "2.1"
     static let name = "ios"
     /// `https://api.wajub.com`, for both environments.
     static let apiURL = URL(string: "https://api.wajub.com")!
@@ -51,7 +51,7 @@ struct DeviceEnvironment: Sendable {
                                  screen: { await DeviceEnvironment.mainScreen() }, installIDStore: FileInstallIDStore.standard)
     }
 
-    /// `wajub-ios/1.0.0 (ios 18.1)`.
+    /// `wajub-ios/1.1.0 (ios 18.1)`.
     var clientIdentifier: String {
         "wajub-\(WajubSDK.name)/\(WajubSDK.version) (\(platform) \(osVersion))"
     }

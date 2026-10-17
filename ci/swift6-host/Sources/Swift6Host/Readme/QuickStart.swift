@@ -13,10 +13,10 @@ func pay(token: String, from viewController: UIViewController) async {
     do {
         switch try await WajubCheckout.present(options, from: viewController) {
         case .complete(let payment, _):
-            // Paid. Confirm on your server (GET /payments/{id} or the payment.succeeded webhook) before delivering.
+            // Paid. Confirm on your server before delivering.
             await confirmOnServer(paymentId: payment.id)
         case .processing:
-            // The payer left while a payment was running: your server learns the outcome from the webhook.
+            // Closed while a payment was running: money may still move, your server learns the outcome.
             break
         case .failed(let error, _):
             print(error.code, error.message)

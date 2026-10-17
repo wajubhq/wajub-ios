@@ -5,7 +5,7 @@ public enum ColorSchemeKind: String, Sendable {
     case light, dark
 }
 
-/// The sheet's colour tokens (appearance.md §7).
+/// The sheet's colour tokens.
 public struct ThemeTokens: Equatable, Sendable {
     public var primary: RGBAColor
     public var primaryPressed: RGBAColor
@@ -32,7 +32,7 @@ public struct ThemeTokens: Equatable, Sendable {
     public var warningBackground: RGBAColor
     public var disabledBackground: RGBAColor
 
-    /// `DEFAULT_PALETTES` of the contract: the web checkout's own colours.
+    /// Wajub's default colours for a scheme.
     public static func defaults(_ scheme: ColorSchemeKind) -> ThemeTokens {
         func c(_ hex: String) -> RGBAColor { RGBAColor(css: hex)! }
         switch scheme {
@@ -58,7 +58,7 @@ public struct ThemeTokens: Equatable, Sendable {
     }
 }
 
-/// What the host app's theme gives when `inherit` is on (appearance.md §3); read by the UI layer.
+/// What the presenting screen's theme gives when `inherit` is on.
 public struct InheritedTheme: Equatable, Sendable {
     public var scheme: ColorSchemeKind?
     public var primary: RGBAColor?
@@ -81,7 +81,7 @@ public struct InheritedTheme: Equatable, Sendable {
         self.borderRadius = borderRadius
     }
 
-    /// Keeps only usable values (Wajub.js's thresholds): `primary` at 3:1 against the sheet's
+    /// Keeps only usable values: `primary` at 3:1 against the sheet's
     /// background, `text` and `textSecondary` at 4.5:1, the radius capped at 22.
     public func usable(against background: RGBAColor) -> InheritedTheme {
         var copy = self
@@ -93,7 +93,7 @@ public struct InheritedTheme: Equatable, Sendable {
     }
 }
 
-/// Shapes and type of the resolved theme (appearance.md §7, "Shapes and type").
+/// Shapes and type of the resolved theme.
 public struct ThemeShape: Equatable, Sendable {
     public static let maxRadius = 22.0
     public static let inputHeight = 44.0
@@ -125,19 +125,19 @@ public struct ResolvedTheme: Equatable, Sendable {
     public var shadow: AppearanceShadow?
     public var labels: AppearanceLabels
     public var disableAnimations: Bool
-    /// `white_label`: hides "Secured by Wajub".
+    /// The merchant is white-label: "Secured by Wajub" is hidden.
     public var hidesWajubBranding: Bool
     public var logoURL: String?
     public var businessName: String?
-    /// `overlay_intensity / 100`.
+    /// The merchant's overlay intensity, 0…1.
     public var overlayOpacity: Double?
     public var separator: RGBAColor?
 }
 
 /// Resolves the sheet's theme: host appearance, preset, inherited host theme, merchant branding,
-/// default palette — in that order for every token (appearance.md §5).
+/// default palette — in that order for every token.
 public enum ThemeResolver {
-    /// The scheme preference: `colorScheme`/`theme` > preset > inherited > `branding.appearance_mode` > auto.
+    /// The scheme preference: `colorScheme`/`theme` > preset > inherited > the merchant's appearance mode > auto.
     /// `nil` means auto (follow the OS).
     public static func schemePreference(appearance: Appearance?, branding: Branding?, inherited: InheritedTheme?) -> ColorSchemeKind? {
         if let colorScheme = appearance?.colorScheme {

@@ -18,7 +18,7 @@ extension CheckoutController {
             self.watchRefusalOrRetry(answer) {}
         }
         watcher.onCap = { [weak self] in self?.capReached() }
-        if let endpoint = RealtimeEndpoint(echo: session.echo, override: options.realtime, transactionId: session.transaction.id) {
+        if let endpoint = RealtimeEndpoint(echo: session.echo, override: options.realtimeOverride, transactionId: session.transaction.id) {
             watcher.attach(realtime: endpoint, connect: connectWebSocket)
         }
         self.watcher = watcher
@@ -59,9 +59,10 @@ extension CheckoutController {
         case .pending:
             // Before the attempt was seen `processing`, a `pending` is the previous attempt's leftover.
             // After a request that got no answer, though, a refusal newer than the one the payment
-            // carried before is this attempt refused: definitive (README §2.5, §14).
-            let refusedNow = attempt?.unansweredSince != nil && update.errorCode != nil
-                && update.errorCode != attempt?.priorErrorCode
+            // carried before is this attempt refused: definitive (README §2.5, §14). Only when that
+            // earlier code is known: without it, no code is taken as a refusal before the 60 s rule.
+            let refusedNow = attempt?.unansweredSince != nil && attempt?.priorErrorCodeKnown == true
+                && update.errorCode != nil && update.errorCode != attempt?.priorErrorCode
             guard attempt?.seenProcessing == true || refusedNow else {
                 giveUpOnUnansweredRequest(update)
                 return
@@ -70,6 +71,22 @@ extension CheckoutController {
             // a refused try is not the end yet. On a client session the provider's own verdict comes
             // from /pay/client-session/complete first: a payment made on the page always wins over a
             // refused try, which stands only once /complete has answered without a verdict.
+            if update.errorCode == WajubError.Code.invalidOTP {
+                if let instructions = attempt?.payerOTP {
+                    // The operator refused the payer's code after the charge went on.
+                    stopWatching()
+                    pendingAgain()
+                    showPayerOTP(instructions, message: strings.payerOTPRefused)
+                } else {
+                    // A code sent elsewhere was refused: back to the form, with the refused text.
+                    backToMobileMoneyForm(payerOTPRefusal, reportsError: false)
+                }
+                return
+            }
+            if update.errorCode == WajubError.Code.otpAttemptsExceeded {
+                backToMobileMoneyForm(.catalogue(WajubError.Code.otpAttemptsExceeded, language))
+                return
+            }
             if isBrowserOpen && browserInApp { return }
             if let attempt, attempt.clientSession != nil, !attempt.clientSessionAnswered {
                 if attempt.completingClientSession { self.attempt?.heldRefusal = update }
@@ -89,8 +106,9 @@ extension CheckoutController {
     /// form with `network_error`; the next Pay reuses the same `Idempotency-Key` (README §2.5).
     func giveUpOnUnansweredRequest(_ status: StatusUpdate) {
         // An error_code from before this attempt is a leftover; only a newer one says the request arrived.
+        // When the earlier code is unknown (an older API), no code says so: the 60 s rule applies.
         guard let attempt, let since = attempt.unansweredSince,
-              status.errorCode == nil || status.errorCode == attempt.priorErrorCode,
+              status.errorCode == nil || !attempt.priorErrorCodeKnown || status.errorCode == attempt.priorErrorCode,
               clock.uptime - since >= Timing.unansweredRequestWait else { return }
         stopWatching()
         reusableKey = attempt.key
@@ -108,7 +126,7 @@ extension CheckoutController {
         guard let code = update.errorCode else { return .catalogue(WajubError.Code.paymentAttemptEnded, language) }
         var error: WajubError
         if let entry = ErrorCatalogue.entries[code] {
-            error = WajubError(type: entry.type, code: code, message: entry.message(language), retryable: true)
+            error = WajubError(type: entry.type, code: code, message: fill(entry.message(language), [:]), retryable: true)
         } else {
             // A provider's own decline code: the same text as a 402 with that code (errors.md §3.4).
             error = WajubError(type: .paymentError, code: code, message: ErrorCatalogue.genericDecline.message(language), retryable: true)

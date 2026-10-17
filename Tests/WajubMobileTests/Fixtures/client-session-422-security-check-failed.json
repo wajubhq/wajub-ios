@@ -1,0 +1,22 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/client-session",
+    "body": {
+      "channel": "card",
+      "email": "awa.ngono@example.com"
+    }
+  },
+  "http_status": 422,
+  "body": {
+    "code": 422,
+    "status": "Unprocessable Content",
+    "message": "Security challenge verification failed. Please refresh the page and try again.",
+    "error_code": "security_check_failed",
+    "errors": {
+      "request": [
+        "Security challenge verification failed. Please refresh the page and try again."
+      ]
+    }
+  }
+}

@@ -28,9 +28,10 @@ final class MobileMoneyTests: XCTestCase {
         for vector in vectors {
             let country = vector["country"]?.string ?? ""
             let phone = vector["phone"]?.string ?? ""
-            XCTAssertEqual(data.detectOperator(phone, country: country), vector["detected"]?.string, "\(country) \(phone)")
+            let sandbox = vector["sandbox"]?.bool ?? false
+            XCTAssertEqual(data.detectOperator(phone, country: country, sandbox: sandbox), vector["detected"]?.string, "\(country) \(phone)")
             let code = MobileMoneyForm.validationCode(phone: phone, country: country, choiceIds: vector["choices"]?.strings ?? [],
-                                                      selection: vector["selected"]?.string, data: data)
+                                                      selection: vector["selected"]?.string, data: data, sandbox: sandbox)
             XCTAssertEqual(code, vector["expected"]?.string, "\(country) \(phone) \(vector["selected"]?.string ?? "")")
         }
         XCTAssertEqual(MobileMoneyForm.validationCode(phone: "677123456", country: "CM", choiceIds: [], selection: nil, data: data),
@@ -45,7 +46,7 @@ final class MobileMoneyTests: XCTestCase {
             let choices = vector["choices"]?.strings ?? []
             let country = vector["country"]?.string ?? ""
             let phone = vector["phone"]?.string ?? ""
-            var selection = choices.first
+            var selection = MobileMoneyForm.initialSelection(choiceIds: choices, data: data)
             var pickedByHand = false
             if let picked = vector["picked_by_hand"]?.string {
                 selection = picked
@@ -65,6 +66,13 @@ final class MobileMoneyTests: XCTestCase {
         form.pick("mtn")
         form.setPhone("69123456")
         XCTAssertEqual(form.selection, "mtn", "a pick by hand is never overridden")
+
+        // Before any number, never a wallet that takes any number: Express Union comes first here.
+        var sandbox = makeForm("session-sandbox-cm", config: "sdk-config-sandbox")
+        XCTAssertEqual(sandbox.choices.map(\.id), ["eu", "mtn", "orange"])
+        XCTAssertEqual(sandbox.selection, "mtn")
+        sandbox.setPhone("691234567")
+        XCTAssertEqual(sandbox.selection, "orange", "then detection decides")
     }
 
     /// MM-03 matches the preselection vectors
@@ -84,9 +92,9 @@ final class MobileMoneyTests: XCTestCase {
         XCTAssertTrue(form.isOperatorListVisible)
         XCTAssertEqual(form.selection, "mtn")
         form.setPhone("691234567")
-        XCTAssertEqual(form.validate(sandbox: false).error?.code, WajubError.Code.operatorMismatch,
+        XCTAssertEqual(form.validate()?.code, WajubError.Code.operatorMismatch,
                        "the list it names is on screen")
-        XCTAssertEqual(form.validate(sandbox: false).error?.message,
+        XCTAssertEqual(form.validate()?.message,
                        "This number belongs to Orange Money. Pick Orange Money in the list, or enter a MTN MoMo number.")
     }
 
@@ -106,6 +114,32 @@ final class MobileMoneyTests: XCTestCase {
                        "MTN MoMo can't be used for this amount (Maximum XOF 1,000). Choose another operator or payment method.")
     }
 
+    /// MM-03 matches the preselection vectors
+    func test_MM_03_neverSelectsADisabledOperator() throws {
+        var form = MobileMoneyForm(channels: Fixtures.session("session-ci-xof-wallets").channels.filter(\.isMobileMoney),
+                                   config: Fixtures.config("sdk-config-ci-wallets"), language: .en, amount: 15000,
+                                   options: MobileMoneyOptions(), geoCountry: "CI")
+        XCTAssertEqual(form.selection, "mtn")
+        // The selection disabled: the first choice still offered, by MM-03's rule.
+        form.exhaust(channelSlug: "ci.mtn", operatorId: "mtn", reason: "No more codes.")
+        XCTAssertEqual(form.selection, "moov")
+        XCTAssertEqual(form.choices.first?.unavailableReason, "No more codes.")
+        // Neither detection nor a pick selects it.
+        form.setPhone("0501020304")
+        XCTAssertEqual(form.detectedOperator, "mtn")
+        XCTAssertEqual(form.selection, "moov")
+        form.pick("mtn")
+        XCTAssertEqual(form.selection, "moov")
+        XCTAssertNotEqual(form.badgeChoice?.id, "mtn")
+        // Down to the wallet that takes any number, then none: no selection, and Pay disabled.
+        form.exhaust(channelSlug: "ci.moov", operatorId: nil, reason: "No more codes.")
+        form.exhaust(channelSlug: "ci.orange", operatorId: nil, reason: "No more codes.")
+        XCTAssertEqual(form.selection, "wave")
+        form.exhaust(channelSlug: "ci.wave", operatorId: "wave", reason: "No more codes.")
+        XCTAssertNil(form.selection)
+        XCTAssertTrue(form.hasNoOperator)
+    }
+
     /// MM-04 lists aggregate operators
     func test_MM_04_listsAggregateOperators() {
         let aggregate = makeForm("session-cm-aggregate")
@@ -114,7 +148,9 @@ final class MobileMoneyTests: XCTestCase {
         XCTAssertEqual(aggregate.choices.map(\.channelSlug), ["cm.mobile", "cm.mobile"])
         XCTAssertEqual(aggregate.choices.map(\.operatorSlug), ["cm.mtn", "cm.orange"])
         XCTAssertEqual(aggregate.choices.map(\.logoURL), ["https://assets.wajub.com/img/channels/momo.svg",
-                                                          "https://assets.wajub.com/img/channels/om.svg"])
+                                                          "https://assets.wajub.com/img/channels/om.svg"], "the operator's logo, as in 1.0.0")
+        XCTAssertEqual(aggregate.choices.map(\.drawableLogoURL), ["https://api.wajub.com/img/channels/momo.png",
+                                                                  "https://api.wajub.com/img/channels/om.png"], "PNG logos (CH-06)")
         XCTAssertTrue(aggregate.choices.allSatisfy(\.isAggregateMember))
 
         let ivorian = makeForm("session-ci-xof-wallets", config: "sdk-config-ci-wallets")
@@ -211,17 +247,26 @@ final class MobileMoneyTests: XCTestCase {
         XCTAssertNil(form.choices.first { $0.id == "mtn" }?.logoURL, "only https logos")
     }
 
-    /// MM-08 does not block mismatches in sandbox
-    @MainActor func test_MM_08_doesNotBlockMismatchesInSandbox() async {
+    /// MM-08 reads mismatches in sandbox from the test number
+    @MainActor func test_MM_08_readsMismatchesInSandboxFromTheTestNumber() async {
+        // In a sandbox payment, Express Union's test number on MTN is a mismatch, and blocks as in live.
         let harness = Harness(session: "session-sandbox-cm")
         harness.transport.answer("process-processing-mobile-money-sandbox")
         let controller = await harness.start()
         controller.selectMethod("mobile_money")
         controller.setPhone("680000000")
-        controller.pickOperator("orange")
+        XCTAssertEqual(controller.mobileMoney?.detectedOperator, "eu")
+        controller.pickOperator("mtn")
+        controller.submitMobileMoney()
+        await settle()
+        XCTAssertTrue(harness.processBodies().isEmpty)
+        XCTAssertEqual(controller.fieldErrors["data.phone"]?.code, WajubError.Code.operatorMismatch)
+        // On the operator it tests, it goes through.
+        controller.pickOperator("eu")
         controller.submitMobileMoney()
         await waitUntil("process sent in sandbox") { harness.processBodies().count == 1 }
-        XCTAssertEqual(controller.warning?.code, WajubError.Code.operatorMismatch)
+        XCTAssertEqual(harness.processBodies()[0]["channel"]?.string, "cm.eu")
+        controller.hostGone()
 
         // The same mismatch in live blocks the submission.
         let live = Fixtures.body("session-sandbox-cm").setting(["transaction", "sandbox"], to: false)
@@ -243,14 +288,17 @@ final class MobileMoneyTests: XCTestCase {
     /// MM-09 loads the shared data file
     func test_MM_09_loadsTheSharedDataFile() throws {
         let loaded = try MobileMoneyData.load()
-        XCTAssertEqual(loaded.countries.count, 23)
+        XCTAssertEqual(loaded.countries.count, 29)
         XCTAssertEqual(loaded.countries["CM"]?.dialCode, "+237")
         XCTAssertEqual(loaded.operatorIndependentWallets, ["wave", "eu", "express_union", "djamo", "capitec", "opay", "palmpay"])
 
         let source = try Data(contentsOf: Fixtures.packageRoot.appendingPathComponent("Sources/WajubMobile/Resources/mobile-money.json"))
-        let future = try JSONValue.parse(source).setting(["schema_version"], to: 2)
-        XCTAssertThrowsError(try MobileMoneyData(data: future.serialized())) { error in
-            XCTAssertEqual(error as? MobileMoneyData.LoadError, .unsupportedSchemaVersion(2))
+        XCTAssertEqual(try JSONValue.parse(source)["schema_version"]?.int, 2)
+        for version in [1, 3] {
+            let other = try JSONValue.parse(source).setting(["schema_version"], to: .number(Double(version)))
+            XCTAssertThrowsError(try MobileMoneyData(data: other.serialized())) { error in
+                XCTAssertEqual(error as? MobileMoneyData.LoadError, .unsupportedSchemaVersion(version))
+            }
         }
 
         // No second copy of the tables in code.
@@ -264,6 +312,132 @@ final class MobileMoneyTests: XCTestCase {
                 XCTAssertFalse(text.contains(marker), "\(file.lastPathComponent) hard-codes \(marker)")
             }
         }
+    }
+
+    /// MM-10 takes the sandbox test numbers
+    @MainActor func test_MM_10_takesTheSandboxTestNumbers() async {
+        let vectors = Fixtures.vectors["sandbox_numbers"]?.array ?? []
+        XCTAssertFalse(vectors.isEmpty)
+        for vector in vectors {
+            let input = vector["input"]?.string ?? ""
+            let country = vector["country"]?.string ?? ""
+            let label = "\(country) \(input)"
+            let test = data.sandboxTestNumber(input, country: country)
+            XCTAssertEqual(test?.operatorId, vector["operator"]?.string, label)
+            XCTAssertEqual(test?.e164, vector["e164"]?.string, label)
+            if let operatorId = vector["operator"]?.string, let e164 = vector["e164"]?.string {
+                // In a sandbox payment: valid, the prefix's operator, sent as read.
+                XCTAssertTrue(data.isValid(input, country: country, sandbox: true), label)
+                XCTAssertEqual(data.detectOperator(input, country: country, sandbox: true), operatorId, label)
+                XCTAssertEqual(data.e164(input, country: country, sandbox: true), e164, label)
+            }
+            // Outside a sandbox payment the prefixes mean nothing.
+            XCTAssertEqual(data.isValid(input, country: country, sandbox: false), data.isValid(input, country: country), label)
+            XCTAssertEqual(data.detectOperator(input, country: country, sandbox: false), data.detectOperator(input, country: country), label)
+            XCTAssertEqual(data.e164(input, country: country, sandbox: false), data.e164(input, country: country), label)
+        }
+
+        // The sheet: a sandbox payment takes Express Union's test number, sent as typed.
+        let sandbox = Harness(session: "session-sandbox-cm", config: "sdk-config-sandbox")
+        sandbox.transport.answer("process-processing-mobile-money-sandbox")
+        let controller = await sandbox.start()
+        controller.selectMethod("mobile_money")
+        controller.setPhone("680000000")
+        XCTAssertEqual(controller.mobileMoney?.detectedOperator, "eu")
+        XCTAssertEqual(controller.mobileMoney?.selection, "eu")
+        controller.submitMobileMoney()
+        await waitUntil("sent") { sandbox.processBodies().count == 1 }
+        XCTAssertEqual(sandbox.processBodies()[0]["data"]?["phone"]?.string, "+237680000000")
+        XCTAssertEqual(sandbox.processBodies()[0]["channel"]?.string, "cm.eu")
+        controller.hostGone()
+
+        // A live payment: the same number is MTN's.
+        let live = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
+        let liveController = await live.start()
+        liveController.selectMethod("mobile_money")
+        liveController.setPhone("680000000")
+        XCTAssertEqual(liveController.mobileMoney?.detectedOperator, "mtn")
+        liveController.hostGone()
+    }
+
+    /// MM-10 takes the sandbox test numbers
+    @MainActor func test_MM_10_readsSandboxFromTheLoadedPayment() async {
+        // A sandbox payment stays one when a later answer's transaction leaves the flag out.
+        let sandbox = Harness(session: "session-sandbox-cm", config: "sdk-config-sandbox")
+        let silent = Fixtures.body("process-processing-mobile-money-sandbox").setting(["transaction", "sandbox"], to: nil)
+        sandbox.transport.on("POST", "/pay/process", .json(202, silent))
+        sandbox.transport.answer("status-processing")
+        let controller = await sandbox.start()
+        XCTAssertTrue(controller.isSandbox)
+        controller.selectMethod("mobile_money")
+        controller.setPhone("680000000")
+        controller.submitMobileMoney()
+        await waitUntil("approval") { controller.state == .approvalRequired }
+        XCTAssertEqual(controller.transaction?.sandbox, false, "the answer said nothing")
+        XCTAssertTrue(controller.isSandbox, "never lowered by a later answer")
+        controller.hostGone()
+
+        // A live payment never becomes a sandbox one from an answer.
+        let live = Harness(session: "session-cm-aggregate", config: "sdk-config-cm-stripe")
+        let loud = Fixtures.body("process-processing-mobile-money-sandbox").setting(["transaction", "sandbox"], to: true)
+        live.transport.on("POST", "/pay/process", .json(202, loud))
+        live.transport.answer("status-processing")
+        let liveController = await live.start()
+        XCTAssertFalse(liveController.isSandbox)
+        liveController.setPhone("670000000")
+        liveController.submitMobileMoney()
+        await waitUntil("approval") { liveController.state == .approvalRequired }
+        XCTAssertEqual(liveController.transaction?.sandbox, true)
+        XCTAssertFalse(liveController.isSandbox, "only the loaded payment says sandbox")
+        liveController.hostGone()
+    }
+
+    /// Digits typed on an Arabic, Persian or full-width keyboard are read as ASCII digits, in the number,
+    /// the confirmation steps and the card fields.
+    @MainActor func test_readsDigitsOfOtherKeyboardsAsASCII() async throws {
+        for typed in ["٦٧٧ ١٢ ٣٤ ٥٦", "۶۷۷۱۲۳۴۵۶", "６７７１２３４５６", "+٢٣٧ 677 12 34 56"] {
+            XCTAssertEqual(data.sanitize(typed), typed.hasPrefix("+") ? "237677123456" : "677123456", typed)
+            XCTAssertTrue(data.isValid(typed, country: "CM"), typed)
+            XCTAssertEqual(data.detectOperator(typed, country: "CM"), "mtn", typed)
+            XCTAssertEqual(data.e164(typed, country: "CM"), "+237677123456", typed)
+        }
+        XCTAssertEqual(data.sanitize("½ Ⅳ ²"), "", "numbers that are not decimal digits are dropped")
+        XCTAssertEqual(data.sandboxTestNumber("٦٨٠٠٠٠٠٠٠", country: "CM")?.e164, "+237680000000")
+
+        // The sheet: the field shows the digits, and Pay sends them in ASCII.
+        let harness = await Harness.mobileMoney(answers: "process-processing-mobile-money-sandbox")
+        harness.controller.setPhone("٦٧٠ ٠٠ ٠٠ ٠٠")
+        XCTAssertEqual(harness.controller.mobileMoney?.phone, "670000000")
+        XCTAssertEqual(harness.controller.mobileMoney?.formattedPhone, "67 00 00 00 0")
+        harness.controller.submitMobileMoney()
+        await waitUntil("sent") { harness.processBodies().count == 1 }
+        XCTAssertEqual(harness.processBodies()[0]["data"]?["phone"]?.string, "+237670000000")
+        harness.controller.hostGone()
+
+        // A confirmation step's code, in ASCII; a number that is not a decimal digit is refused.
+        let step = Harness(session: "session-cm-aggregate", config: "sdk-config-card-kkiapay")
+        step.transport.answer("process-requires-otp", "status-processing", "pin-verify-success")
+        let controller = await step.start()
+        controller.selectMethod("card")
+        controller.submitCard()
+        await waitUntil("otp") { controller.state == .otpRequired }
+        controller.submitStep(["code": "Ⅳ２３４５６"])
+        XCTAssertNotNil(controller.fieldErrors["code"])
+        XCTAssertTrue(step.transport.requests("POST", "/pay/otp/verify").isEmpty)
+        step.transport.on("POST", "/pay/otp/verify", .fixture("pin-verify-success"))
+        controller.submitStep(["code": "١٢٣٤٥٦"])
+        await waitUntil("verified") { !step.transport.requests("POST", "/pay/otp/verify").isEmpty }
+        XCTAssertEqual(step.transport.requests("POST", "/pay/otp/verify")[0].json?["code"]?.string, "123456")
+        controller.hostGone()
+
+        // The card fields, in ASCII.
+        var card = CardForm(flavour: .sandboxForm, customer: nil)
+        card.values = ["card.number": "٤٢٤٢ ٤٢٤٢ ٤٢٤٢ ٤٢٤٢", "card_holder": "Awa Ngono", "expiry_month": "١٢",
+                       "expiry_year": "۲۰۳۰", "cvv": "١٢٣"]
+        XCTAssertEqual(card.payload["card.number"], "4242 4242 4242 4242")
+        XCTAssertEqual(card.payload["expiry_year"], "2030")
+        XCTAssertEqual(card.payload["cvv"], "123")
+        XCTAssertEqual(card.payload["card_holder"], "Awa Ngono")
     }
 
     private func makeForm(_ session: String, config: String? = nil) -> MobileMoneyForm {

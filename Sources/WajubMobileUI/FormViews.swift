@@ -92,6 +92,8 @@ struct MethodFormView: View {
         let controller = model.controller
         VStack(alignment: .leading, spacing: style.gapRow) {
             switch controller.currentMethod?.kind {
+            case .mobileMoney? where controller.payerOTP != nil:
+                PayerOTPView(model: model, style: style, screen: controller.payerOTP!)
             case .mobileMoney?:
                 MobileMoneyFormView(model: model, style: style)
             case .card(let flavour)?:
@@ -135,8 +137,10 @@ struct MobileMoneyFormView: View {
                     BannerView(message: model.strings.operatorOutOfLimits(unavailable.label, limit: limitText(limit)),
                                foreground: style.warning, background: style.warningBackground, style: style)
                 }
-                if let warning = controller.warning {
-                    BannerView(message: warning.message, foreground: style.warning, background: style.warningBackground, style: style)
+                if let announced = form.announcedPayerOTP {
+                    Text(model.strings.payerOTPFormHint(ussdCode: announced.ussdCode))
+                        .font(style.hint)
+                        .foregroundColor(style.textSecondary)
                 }
                 PrimaryButton(title: model.strings.pay(controller.formattedAmount), style: style, busy: controller.isPaying,
                               enabled: !form.hasNoOperator && !controller.isCancelling) {
@@ -203,7 +207,11 @@ struct MobileMoneyFormView: View {
                             Text(choice.label)
                                 .font(style.body)
                                 .foregroundColor(style.text)
-                            if let limit = choice.limit {
+                            if let reason = choice.unavailableReason {
+                                Text(reason)
+                                    .font(style.hint)
+                                    .foregroundColor(style.textSecondary)
+                            } else if let limit = choice.limit {
                                 Text(limitText(limit))
                                     .font(style.hint)
                                     .foregroundColor(style.textSecondary)
@@ -219,10 +227,10 @@ struct MobileMoneyFormView: View {
                     .overlay(RoundedRectangle(cornerRadius: style.radius)
                         .strokeBorder(selected ? style.primary : style.inputBorder, lineWidth: selected ? 2 : 1))
                     .contentShape(Rectangle())
-                    .opacity(choice.limit == nil ? 1 : 0.5)
+                    .opacity(choice.isAvailable ? 1 : 0.5)
                 }
                 .buttonStyle(.plain)
-                .disabled(choice.limit != nil)
+                .disabled(!choice.isAvailable)
                 .accessibilityAddTraits(selected ? .isSelected : [])
             }
             if let error = controller.fieldErrors["data.operator"] {

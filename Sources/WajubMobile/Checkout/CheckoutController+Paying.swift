@@ -23,6 +23,7 @@ extension CheckoutController {
         }
         attempt.phone = phone
         attempt.priorErrorCode = lastErrorCode
+        attempt.priorErrorCodeKnown = lastErrorCodeKnown
         self.attempt = attempt
         isBusy = true
         banner = nil
@@ -65,8 +66,11 @@ extension CheckoutController {
             if answer.status >= 500 { self.attempt?.unansweredSince = lastSent.value ?? self.clock.uptime }
             if !securityRetry, self.isSecurityRefusal(answer) {
                 await self.renewAltcha()
+                // The same code (if any) goes again, and the same flow follows.
+                let codeStep = self.attempt?.payerOTP
                 self.pay(channel: channel, data: data.filter { $0.key != "altcha" && $0.key != "_client" }, family: family,
                          mobileMoney: mobileMoney, phone: phone, securityRetry: true)
+                self.attempt?.payerOTP = codeStep
                 return
             }
             if securityRetry, self.isSecurityRefusal(answer) {
@@ -81,7 +85,33 @@ extension CheckoutController {
     func handlePaymentAnswer(_ answer: APIAnswer, mobileMoney: Bool, clientSession: Bool) {
         guard result == nil else { return }
         isBusy = false
-        switch PaymentAnswer.classify(answer, mobileMoney: mobileMoney, allowsClientSession: clientSession) {
+        let classified = PaymentAnswer.classify(answer, mobileMoney: mobileMoney, allowsClientSession: clientSession)
+        if case .payerOTP(let instructions, let response) = classified {
+            // Nothing was charged: the payer generates a code in the operator's menu, then pays again.
+            if let transaction = response.transaction {
+                lastTransaction = transaction
+                // The answer's refusal is the baseline, none when it carries none: a later status still
+                // carrying it is not a new refusal.
+                if transaction.hasErrorCodeKey {
+                    lastErrorCode = transaction.errorCode
+                    lastErrorCodeKnown = true
+                }
+            }
+            pendingAgain()
+            let length = instructions.otpLength
+            switch instructions.reason {
+            case "invalid":
+                showPayerOTP(instructions, message: strings.payerOTPLength(length))
+            case "refused":
+                showPayerOTP(instructions, message: strings.payerOTPRefused, attemptsRemaining: instructions.attemptsRemaining)
+            default:
+                showPayerOTP(instructions)
+            }
+            return
+        }
+        let codeSent = attempt?.payerOTP != nil
+        payerOTP = nil
+        switch classified {
         case .succeeded(let transaction):
             paymentStarted(transaction)
             succeed(transaction)
@@ -89,7 +119,8 @@ extension CheckoutController {
             paymentStarted(response.transaction)
             let instruction = response.transaction?.processingContext?.payerInstruction
             switch kind {
-            case .approval: screen = .approval(ApprovalScreen(phone: attempt?.phone, instruction: instruction))
+            case .approval:
+                screen = .approval(ApprovalScreen(phone: attempt?.phone, instruction: instruction, payerOTPReceived: codeSent))
             case .ussd: screen = .ussd(instruction: instruction)
             case .pending: screen = .pending(PendingScreen())
             }
@@ -115,8 +146,15 @@ extension CheckoutController {
             paymentStarted(response.transaction)
             attempt?.clientSession = session
             openRedirect(session.hostedURL ?? "", threeDS: false)
+        case .payerOTP:
+            break
         case .unsupportedAction(let response):
-            paymentStarted(response.transaction)
+            if response.action == .payerOTP {
+                // The code step without its instructions: nothing was charged.
+                pendingAgain()
+            } else {
+                paymentStarted(response.transaction)
+            }
             fail(.catalogue(WajubError.Code.unsupportedAction, language))
         case .unconfirmed:
             // A 2xx that says nothing of the payment: watch, as for a request without an answer.
@@ -135,6 +173,11 @@ extension CheckoutController {
         if let transaction = body?.transaction { lastTransaction = transaction }
         // A decline stays on the payment until the next try starts.
         if answer.status == 402, let code = body?.errorCode { lastErrorCode = code }
+        payerOTP = nil
+        if answer.status == 402, body?.errorCode == WajubError.Code.otpAttemptsExceeded {
+            backToMobileMoneyForm(error)
+            return
+        }
         switch answer.status {
         case 400:
             // Still busy, and the attempt undecided, until the status says what happened: no Pay, no
@@ -171,6 +214,37 @@ extension CheckoutController {
             }
             fail(error)
         }
+    }
+
+    /// Too many of the payer's codes refused on this channel: back to the Mobile Money form with that
+    /// error; the payment is still payable another way.
+    func backToMobileMoneyForm(_ error: WajubError, reportsError: Bool = true) {
+        stopWatching()
+        pendingAgain()
+        let channel = payerOTPRequest?.channel ?? attempt.map(\.channel)
+        isBusy = false
+        // The payment's form, as on a first opening, when the sheet has none (reopened on an approval
+        // under way).
+        if currentMethod?.kind != .mobileMoney, let method = methods.first(where: { $0.kind == .mobileMoney }) {
+            openForm(method)
+        }
+        if error.code == WajubError.Code.otpAttemptsExceeded, let channel {
+            // That channel is not offered again for this payment.
+            let selection = mobileMoney?.selection
+            mobileMoney?.exhaust(channelSlug: channel, operatorId: selection, reason: error.message)
+        }
+        payerOTP = nil
+        payerOTPRequest = nil
+        fieldErrors = [:]
+        banner = error
+        screen = currentMethod?.kind == .mobileMoney ? .form : .methods
+        update()
+        if reportsError { emit { try self.options.callbacks.onError?(error) } }
+    }
+
+    /// The operator did not take a code: the refused text, as a form banner.
+    var payerOTPRefusal: WajubError {
+        WajubError(type: .paymentError, code: WajubError.Code.invalidOTP, message: strings.payerOTPRefused, retryable: true)
     }
 
     /// A 422: back to the form with field errors (README §9.1).
@@ -270,11 +344,13 @@ extension CheckoutController {
         emit { try self.options.callbacks.onError?(error) }
     }
 
-    /// The 422 that refuses a missing or wrong Altcha solution: its `altcha` validation key, else (as a
-    /// last resort, with no field at fault) its message.
+    /// The 422 that refuses a missing or wrong Altcha solution: its `error_code` `security_check_failed`;
+    /// from an older API, its `altcha` validation key, else (with no field at fault) its message.
     func isSecurityRefusal(_ answer: APIAnswer) -> Bool {
-        guard answer.status == 422, session?.altcha != nil || altchaTask != nil else { return false }
+        guard answer.status == 422 else { return false }
         let body = answer.body.map(APIErrorBody.init(json:))
+        if body?.errorCode == WajubError.Code.securityCheckFailed { return true }
+        guard session?.altcha != nil || altchaTask != nil else { return false }
         let keys = Set(body?.errors.keys.map { $0 } ?? [])
         if keys.contains("altcha") || keys.contains("data.altcha") { return true }
         guard keys.isSubset(of: ["request"]) else { return false }
@@ -351,7 +427,8 @@ extension CheckoutController {
         payerReturned()
     }
 
-    /// The app came back from the background (a wallet's app, the browser) or a deep link arrived: poll at once.
+    /// The app came back from the background (a wallet's app, the browser) or a deep link arrived: the
+    /// payment is checked at once.
     public func appWillEnterForeground() {
         guard result == nil else { return }
         if watcher == nil {
@@ -390,7 +467,12 @@ extension CheckoutController {
     /// decides over a refused try the watch reads meanwhile; without a verdict (still processing, or no
     /// answer), that refused try stands, and the watch decides from then on.
     func completeClientSession(_ session: ClientSession) {
-        guard attempt?.completingClientSession == false else { return }
+        guard attempt?.completingClientSession == false else {
+            // Back again (from the page reopened meanwhile): asked once the call on its way has answered.
+            attempt?.completeAgain = true
+            return
+        }
+        attempt?.completeAgain = false
         attempt?.completingClientSession = true
         attempt?.clientSessionAnswered = false
         attempt?.heldRefusal = nil
@@ -438,6 +520,11 @@ extension CheckoutController {
     /// `/complete` gave no verdict: a refused try read meanwhile stands, else the watch looks at once.
     func clientSessionUndecided() {
         attempt?.completingClientSession = false
+        if attempt?.completeAgain == true, let session = attempt?.clientSession, !(isBrowserOpen && browserInApp) {
+            // The payer came back again meanwhile: the provider's verdict is asked once more.
+            completeClientSession(session)
+            return
+        }
         attempt?.clientSessionAnswered = true
         if let held = attempt?.heldRefusal {
             attempt?.heldRefusal = nil

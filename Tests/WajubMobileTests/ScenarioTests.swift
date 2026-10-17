@@ -664,6 +664,27 @@ final class ScenarioTests: XCTestCase {
         XCTAssertEqual(harness.recorder.successes.count, 1)
         controller.close()
         XCTAssertEqual(harness.recorder.completions.count, 1)
+
+        // Back from the page reopened while /complete was on its way, and no verdict yet: asked once more.
+        let again = Harness(session: "session-cm-aggregate", config: "sdk-config-card-paystack")
+        again.transport.answer("client-session-start-202", "status-processing")
+        let first = Gate()
+        again.transport.on("POST", "/pay/client-session/complete", .gated(first, .fixture("client-session-complete-202")))
+        let paying = await again.start()
+        paying.selectMethod("card")
+        paying.submitCard()
+        await waitUntil("browser") { !again.browser.opened.isEmpty }
+        again.browser.close()
+        await waitUntil("completing") { again.transport.requests("POST", "/pay/client-session/complete").count == 1 }
+        paying.continuePayment()
+        await waitUntil("reopened") { again.browser.opened.count == 2 }
+        again.browser.close()
+        await settle()
+        XCTAssertEqual(again.transport.requests("POST", "/pay/client-session/complete").count, 1, "one in flight at a time")
+        first.open()
+        await waitUntil("asked again") { again.transport.requests("POST", "/pay/client-session/complete").count == 2 }
+        XCTAssertEqual(paying.state, .pending)
+        paying.hostGone()
     }
 
     // MARK: 8. Altcha

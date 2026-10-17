@@ -2,6 +2,9 @@
   "request": {
     "method": "POST",
     "path": "/pay/process",
+    "headers": {
+      "X-Wajub-Client": "wajub-flutter/1.6.0 (android 15)"
+    },
     "body": {
       "channel": "cm.mobile",
       "data": {
@@ -12,7 +15,8 @@
           "language": "fr-CM",
           "screen": "1080x2400",
           "color_depth": 24,
-          "fingerprint": "9f2c4e1a7b3d5f60"
+          "fingerprint": "9f2c4e1a7b3d5f60",
+          "client": "wajub-flutter/1.6.0 (android 15)"
         }
       }
     }
@@ -37,6 +41,7 @@
       "fee": null,
       "status": "pending",
       "status_label": "Pending",
+      "error_code": "insufficient_funds",
       "sandbox": true,
       "description": "Commande #4172",
       "customer": {
@@ -45,8 +50,8 @@
       },
       "receipt_url": null,
       "expires_at": null,
-      "created_at": "2026-10-14T09:30:00+00:00",
-      "updated_at": "2026-10-14T09:30:00+00:00",
+      "created_at": "2026-10-15T09:30:00+00:00",
+      "updated_at": "2026-10-15T09:30:00+00:00",
       "terminal_at": null
     }
   }

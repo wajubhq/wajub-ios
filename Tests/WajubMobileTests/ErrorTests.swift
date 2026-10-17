@@ -32,7 +32,12 @@ final class ErrorTests: XCTestCase {
         "birthday-verify-422-format": ("validation_error", .invalidRequestError, true, nil, "birthday"),
         "broadcasting-auth-403": ("merchant_restricted", .paymentError, false, nil, nil),
         "cancel-400-not-cancellable": ("not_processable", .invalidRequestError, false, nil, nil),
+        "process-402-payer-otp-attempts-exceeded": ("otp_attempts_exceeded", .paymentError, true, "otp_attempts_exceeded", nil),
+        "cancel-409-payment-in-progress": ("payment_in_progress", .invalidRequestError, false, nil, nil),
+        "cancel-409-payment-partly-paid": ("payment_partly_paid", .invalidRequestError, false, nil, nil),
         "client-session-422-sandbox": ("client_session_unavailable", .invalidRequestError, false, nil, "request"),
+        "client-session-422-security-check-failed": ("security_check_failed", .invalidRequestError, true, nil, "request"),
+        "process-422-security-check-failed": ("security_check_failed", .invalidRequestError, true, nil, "request"),
         "client-session-complete-402": ("failed", .paymentError, true, "failed", nil),
         "client-session-complete-422-expired": ("client_session_expired", .invalidRequestError, true, nil, "request"),
         "error-401-invalid-token": ("session_not_found", .authenticationError, false, nil, nil),
@@ -69,7 +74,8 @@ final class ErrorTests: XCTestCase {
             var headers = Fixtures.headers(name)
             headers["X-Request-Id"] = "req_\(name)"
             let answer = APIAnswer(status: Fixtures.status(name), headers: headers, body: Fixtures.body(name))
-            let error = WajubError.from(answer, phase: path == "/pay/session" ? .loading : .payment, language: .en)
+            let phase: ErrorPhase = path == "/pay/session" ? .loading : path == "/pay/cancel" ? .cancel : .payment
+            let error = WajubError.from(answer, phase: phase, language: .en)
             let (code, type, retryable, decline, param) = try XCTUnwrap(expectations[name])
             XCTAssertEqual(error.code, code, name)
             XCTAssertEqual(error.type, type, name)
@@ -112,6 +118,47 @@ final class ErrorTests: XCTestCase {
         }
     }
 
+    /// ER-02 maps every error fixture
+    @MainActor func test_ER_02_mapsTheCancelRefusals() async throws {
+        // An app that cancels through WajubSession gets the catalogue's refusals.
+        let cases: [(String, String, String, String)] = [
+            ("cancel-409-payment-partly-paid", WajubError.Code.paymentPartlyPaid,
+             "Part of this payment has already been paid, so it can't be cancelled.",
+             "Une partie de ce paiement a déjà été réglée : il ne peut plus être annulé."),
+            ("cancel-409-payment-in-progress", WajubError.Code.paymentInProgress,
+             "This payment is being paid and can't be cancelled now.",
+             "Ce paiement est en cours de règlement et ne peut pas être annulé maintenant."),
+        ]
+        for (fixture, code, english, french) in cases {
+            let harness = Harness(session: "session-cm-aggregate")
+            harness.transport.answer(fixture)
+            do {
+                _ = try await harness.client.cancel()
+                XCTFail("\(fixture): not refused")
+            } catch let error as WajubError {
+                XCTAssertEqual(error.code, code, fixture)
+                XCTAssertEqual(error.type, .invalidRequestError, fixture)
+                XCTAssertFalse(error.retryable, fixture)
+                XCTAssertEqual(error.message, english, fixture)
+                XCTAssertEqual(error.httpStatus, 409, fixture)
+            }
+            let answer = APIAnswer(status: 409, body: Fixtures.body(fixture))
+            XCTAssertEqual(WajubError.from(answer, phase: .cancel, language: .fr).message, french, fixture)
+            XCTAssertEqual(WajubStrings(.fr).errorMessage(code), french, fixture)
+        }
+
+        // payment_in_progress on /pay/process is unchanged: no cancel text, and the payment is waited for.
+        let process = APIAnswer(status: 409, body: Fixtures.body("process-409-payment-in-progress"))
+        let mapped = WajubError.from(process, phase: .payment, language: .en)
+        XCTAssertEqual(mapped.code, WajubError.Code.paymentInProgress)
+        XCTAssertNotEqual(mapped.message, "This payment is being paid and can't be cancelled now.")
+        let low = Harness(session: "session-cm-aggregate")
+        low.transport.answer("process-409-payment-in-progress")
+        guard case .processing(_, _, .pending) = await low.client.process(channel: "cm.mobile", data: ["phone": "+237670000000"]) else {
+            return XCTFail("not processing")
+        }
+    }
+
     /// ER-03 localises error messages
     func test_ER_03_localisesErrorMessages() {
         let decline = APIAnswer(status: 402, body: Fixtures.body("process-failed-402"))
@@ -149,7 +196,8 @@ final class ErrorTests: XCTestCase {
                         "redirect_unavailable", "invalid_otp", "otp_expired", "invalid_pin", "pin_expired", "phone_expired",
                         "invalid_birthday", "birthday_expired", "invalid_address", "address_expired", "max_attempts_exceeded",
                         "invalid_code", "3ds_failed", "3ds_rejected", "3ds_cancelled", "3ds_timeout", "client_session_unavailable",
-                        "client_session_expired", "sheet_already_presented"]
+                        "client_session_expired", "sheet_already_presented", "payment_partly_paid", "payment_in_progress",
+                        "otp_attempts_exceeded"]
         XCTAssertEqual(Set(contract), Set(ErrorCatalogue.entries.keys))
 
         // The sheet's own texts exist in both languages.
@@ -239,6 +287,65 @@ final class ErrorTests: XCTestCase {
         await waitUntil("field error") { fieldController.fieldErrors["data.phone"] != nil }
         XCTAssertEqual(fieldRefused.transport.requests("GET", "/pay/session").count, 1, "no reload")
         fieldController.hostGone()
+    }
+
+    /// AL-02 recognises the altcha refusal by its code
+    @MainActor func test_AL_02_recognisesTheAltchaRefusalByItsCode() async throws {
+        let altcha: JSONValue = ["algorithm": "SHA-256", "challenge": .string(Digest.sha256Hex("s4lt1234")), "salt": "s4lt",
+                                 "signature": "sig", "maxnumber": 5000]
+        let session = Fixtures.body("session-cm-aggregate").setting(["altcha"], to: altcha)
+
+        // Refused once: the session is reloaded once, solved again, and sent with a new Idempotency-Key.
+        let once = Harness(config: "sdk-config-cm-stripe")
+        once.transport.on("GET", "/pay/session", .json(200, session))
+        once.transport.on("POST", "/pay/process", .fixture("process-422-security-check-failed"),
+                          .fixture("process-processing-mobile-money-sandbox"))
+        let paying = await once.start()
+        paying.setPhone("670000000")
+        paying.submitMobileMoney()
+        await waitUntil("approval") { paying.state == .approvalRequired }
+        let tries = once.transport.requests("POST", "/pay/process")
+        XCTAssertEqual(tries.count, 2)
+        XCTAssertNotEqual(tries[0].header("Idempotency-Key"), tries[1].header("Idempotency-Key"))
+        XCTAssertEqual(once.transport.requests("GET", "/pay/session").count, 2, "one reload")
+        XCTAssertNotNil(once.processBodies()[1]["data"]?["altcha"])
+        XCTAssertTrue(once.recorder.errors.isEmpty)
+        paying.hostGone()
+
+        // By its code, whatever the message says, and even without a challenge on the session: refused
+        // twice, FAILED security_check_failed, retryable, no field errors.
+        let reworded = Fixtures.body("process-422-security-check-failed").setting(["message"], to: "Nope")
+            .setting(["errors"], to: ["request": ["Nope"]])
+        for body in [session, Fixtures.body("session-cm-aggregate")] {
+            let twice = Harness(config: "sdk-config-cm-stripe")
+            twice.transport.on("GET", "/pay/session", .json(200, body))
+            twice.transport.on("POST", "/pay/process", .json(422, reworded))
+            let controller = await twice.start()
+            controller.setPhone("670000000")
+            controller.submitMobileMoney()
+            await waitUntil("failed") { controller.state == .failed }
+            guard case .failed(let error) = controller.screen else { return XCTFail("not failed") }
+            XCTAssertEqual(error.code, WajubError.Code.securityCheckFailed)
+            XCTAssertTrue(error.retryable)
+            XCTAssertTrue(controller.fieldErrors.isEmpty)
+            XCTAssertEqual(twice.transport.requests("POST", "/pay/process").count, 2)
+            XCTAssertEqual(twice.transport.requests("GET", "/pay/session").count, 2)
+            controller.hostGone()
+        }
+
+        // On /pay/client-session too.
+        let card = Harness(config: "sdk-config-card-paystack")
+        card.transport.on("GET", "/pay/session", .json(200, session))
+        card.transport.on("POST", "/pay/client-session", .fixture("client-session-422-security-check-failed"),
+                          .fixture("client-session-start-202"))
+        card.transport.answer("status-processing")
+        let cardController = await card.start()
+        cardController.selectMethod("card")
+        cardController.submitCard()
+        await waitUntil("page") { !card.browser.opened.isEmpty }
+        XCTAssertEqual(card.transport.requests("POST", "/pay/client-session").count, 2)
+        XCTAssertEqual(card.transport.requests("GET", "/pay/session").count, 2)
+        cardController.hostGone()
     }
 
     /// AL-01 solves altcha challenges

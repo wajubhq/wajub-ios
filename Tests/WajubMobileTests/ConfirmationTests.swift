@@ -32,7 +32,7 @@ final class ConfirmationTests: XCTestCase {
             XCTAssertEqual(screen.kind, step.kind)
             XCTAssertEqual(screen.id, "prc_7hQm2LxV9pR4sT1wYb3N")
             XCTAssertEqual(screen.hint, Fixtures.body(step.fixture)[step.kind == .otp ? "otp_masked_contact" : "\(step.kind.rawValue)_instruction"]?.string)
-            harness.transport.on("POST", "/pay/\(step.kind.rawValue)/verify", .fixture("otp-verify-success"))
+            harness.transport.on("POST", "/pay/\(step.kind.rawValue)/verify", .fixture("pin-verify-success"))
             controller.submitStep(step.fields)
             XCTAssertEqual(controller.state, .verifying)
             await waitUntil("verified") { controller.state == .pending }
@@ -44,10 +44,41 @@ final class ConfirmationTests: XCTestCase {
         }
     }
 
+    /// CF-01 opens each confirmation step
+    @MainActor func test_CF_01_showsTheOTPContactOnly() async {
+        // The masked contact as given; none when it is empty; never the provider's sentence.
+        let cases: [(JSONValue, String?)] = [
+            ("+234******5678", "+234******5678"), ("080******78, a***@example.com", "080******78, a***@example.com"),
+            ("", nil), (.null, nil),
+            ("Please enter the OTP sent to 080******78", "080******78"), ("Please enter the OTP we sent you", nil),
+        ]
+        for (contact, expected) in cases {
+            let harness = Harness(session: "session-cm-aggregate", config: "sdk-config-card-kkiapay")
+            harness.transport.on("POST", "/pay/process", .json(202, Fixtures.body("process-requires-otp").setting(["otp_masked_contact"], to: contact)))
+            harness.transport.answer("status-processing")
+            let controller = await harness.start()
+            controller.selectMethod("card")
+            controller.submitCard()
+            await waitUntil("otp") { controller.state == .otpRequired }
+            guard case .step(let step) = controller.screen else { return XCTFail("no step") }
+            XCTAssertEqual(step.hint, expected, "\(contact)")
+            controller.hostGone()
+        }
+        // The chained OTP's contact, recaptured from the API.
+        guard case .step(let chained, _) = PaymentAnswer.classify(
+            APIAnswer(status: 200, body: Fixtures.body("birthday-verify-chained-otp")), mobileMoney: false, allowsClientSession: false)
+        else { return XCTFail("not a step") }
+        XCTAssertEqual(chained.hint, "080******78")
+        XCTAssertEqual(WajubStrings(.en).codeSentTo("080******78"), "Sent to 080******78")
+        XCTAssertEqual(WajubStrings(.en).codeSent, "A code was sent to you.")
+        XCTAssertEqual(WajubStrings(.fr).codeSent, "Un code vous a été envoyé.")
+    }
+
     /// CF-02 reads the transaction after a step
     @MainActor func test_CF_02_readsTheTransactionAfterAStep() async {
-        let successes = ["otp-verify-success", "pin-verify-success", "phone-verify-success", "birthday-verify-success", "address-verify-success"]
-        for (step, success) in zip(ConfirmationTests.steps, successes) {
+        // A step the provider settles at once is paid (2.1); one still `processing` (2.0) is watched.
+        let successes = ["pin-verify-success", "phone-verify-success", "birthday-verify-success", "address-verify-success"]
+        for (step, success) in zip(ConfirmationTests.steps.dropFirst(), successes) {
             let harness = await stepHarness(step.fixture)
             harness.transport.answer(success, "status-processing")
             await waitUntil("step") { harness.controller.state == step.state }
@@ -57,13 +88,89 @@ final class ConfirmationTests: XCTestCase {
             XCTAssertFalse(harness.transport.requests("GET", "/pay/status").isEmpty, "watching")
             harness.controller.hostGone()
         }
-        let paid = Fixtures.body("otp-verify-success").setting(["transaction", "status"], to: "succeeded")
         let harness = await stepHarness("process-requires-otp")
-        harness.transport.on("POST", "/pay/otp/verify", .json(200, paid))
+        harness.transport.answer("otp-verify-success")
         await waitUntil("otp") { harness.controller.state == .otpRequired }
         harness.controller.submitStep(["code": "123456"])
         await waitUntil("success") { harness.controller.state == .success }
+        XCTAssertEqual(harness.recorder.successes.first?.id, Fixtures.body("otp-verify-success")["transaction"]?["id"]?.string)
         harness.controller.hostGone()
+    }
+
+    /// CF-07 follows a chained step
+    @MainActor func test_CF_07_followsAChainedStep() async throws {
+        // A birthday, then the OTP the provider asks for next: its own screen, id, hint and attempts.
+        let chained = await stepHarness("process-requires-birthday")
+        chained.transport.answer("birthday-verify-chained-otp")
+        await waitUntil("birthday") { chained.controller.state == .birthdayRequired }
+        chained.controller.submitStep(["birthday": "1990-04-21"])
+        await waitUntil("otp") { chained.controller.state == .otpRequired }
+        guard case .step(let otp) = chained.controller.screen else { return XCTFail("no OTP screen") }
+        let body = Fixtures.body("birthday-verify-chained-otp")
+        XCTAssertEqual(otp.kind, .otp)
+        XCTAssertEqual(otp.id, body["otp_id"]?.string)
+        XCTAssertEqual(otp.hint, body["otp_masked_contact"]?.string)
+        XCTAssertNil(otp.attemptsRemaining, "a fresh attempt count")
+        XCTAssertEqual(Array(chained.recorder.states.suffix(3)), [.birthdayRequired, .verifying, .otpRequired])
+        XCTAssertTrue(chained.recorder.errors.isEmpty)
+        chained.transport.answer("otp-verify-success")
+        chained.controller.submitStep(["code": "123456"])
+        await waitUntil("paid") { chained.controller.state == .success }
+        let verify = try XCTUnwrap(chained.transport.requests("POST", "/pay/otp/verify").first)
+        XCTAssertEqual(verify.json?["otp_id"]?.string, body["otp_id"]?.string)
+        chained.controller.hostGone()
+
+        // A PIN, then the bank's page: onRedirect and the browser, PENDING.
+        let redirect = await stepHarness("process-requires-pin")
+        redirect.transport.answer("pin-verify-chained-redirect")
+        await waitUntil("pin") { redirect.controller.state == .pinRequired }
+        redirect.controller.submitStep(["pin": "1234"])
+        let url = Fixtures.body("pin-verify-chained-redirect")["confirm_url"]?.string
+        await waitUntil("browser") { !redirect.browser.opened.isEmpty }
+        XCTAssertEqual(redirect.recorder.redirects, [url].compactMap { $0 })
+        XCTAssertEqual(redirect.browser.opened.first?.url.absoluteString, url)
+        XCTAssertEqual(redirect.controller.state, .pending)
+        redirect.controller.hostGone()
+
+        // The lower-level client says what follows the step: the next one, a page, or the payment.
+        let low = Harness(session: "session-cm-aggregate")
+        low.transport.answer("birthday-verify-chained-otp")
+        let toOTP = try await low.client.verifyStep(.birthday, id: "prc_7hQm2LxV9pR4sT1wYb3N", fields: ["birthday": "1990-04-21"])
+        guard case .success = toOTP.response, case .requiresAction(let nextStep)? = toOTP.next else { return XCTFail("no next step") }
+        XCTAssertEqual(nextStep.action, .confirmOTP)
+        XCTAssertEqual(nextStep.stepId, body["otp_id"]?.string)
+        XCTAssertEqual(nextStep.hint, body["otp_masked_contact"]?.string)
+        low.transport.answer("pin-verify-chained-redirect")
+        let toPage = try await low.client.verifyStep(.pin, id: "prc_7hQm2LxV9pR4sT1wYb3N", fields: ["pin": "1234"])
+        guard case .requiresAction(let page)? = toPage.next else { return XCTFail("no page") }
+        XCTAssertEqual(page.url, url)
+        low.transport.answer("otp-verify-success")
+        let paidStep = try await low.client.verifyStep(.otp, id: "prc_7hQm2LxV9pR4sT1wYb3N", fields: ["code": "123456"])
+        guard case .complete(let paidTransaction)? = paidStep.next else { return XCTFail("not paid") }
+        XCTAssertEqual(paidTransaction.status, .succeeded)
+        low.transport.answer("pin-verify-success")
+        guard case .processing? = try await low.client.verifyStep(.pin, id: "prc_7hQm2LxV9pR4sT1wYb3N", fields: ["pin": "1234"]).next else {
+            return XCTFail("not processing")
+        }
+        low.transport.answer("otp-verify-invalid")
+        let refused = try await low.client.verifyStep(.otp, id: "prc_7hQm2LxV9pR4sT1wYb3N", fields: ["code": "000000"])
+        guard case .failed(let code, _, _) = refused.response else { return XCTFail("not refused") }
+        XCTAssertEqual(code, "invalid_otp")
+        XCTAssertNil(refused.next)
+        // verify(_:id:fields:) is unchanged.
+        low.transport.answer("birthday-verify-chained-otp")
+        let plain = try await low.client.verify(.birthday, id: "prc_7hQm2LxV9pR4sT1wYb3N", fields: ["birthday": "1990-04-21"])
+        XCTAssertEqual(plain, toOTP.response)
+
+        // An action the sheet cannot perform: FAILED unsupported_action.
+        let unknown = await stepHarness("process-requires-birthday")
+        unknown.transport.on("POST", "/pay/birthday/verify", .json(200, Fixtures.body("birthday-verify-chained-otp").setting(["action"], to: "confirm_magic")))
+        await waitUntil("birthday") { unknown.controller.state == .birthdayRequired }
+        unknown.controller.submitStep(["birthday": "1990-04-21"])
+        await waitUntil("failed") { unknown.controller.state == .failed }
+        guard case .failed(let error) = unknown.controller.screen else { return XCTFail("not failed") }
+        XCTAssertEqual(error.code, WajubError.Code.unsupportedAction)
+        unknown.controller.hostGone()
     }
 
     /// CF-03 handles step refusals

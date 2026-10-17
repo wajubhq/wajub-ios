@@ -1,0 +1,37 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/process",
+    "headers": {
+      "Idempotency-Key": "5f0c2b1e-8d4a-4c3b-9e7f-1a2b3c4d5e6f"
+    },
+    "body": {
+      "channel": "cm.mobile",
+      "data": {
+        "phone": "+237677123456",
+        "country": "CM",
+        "operator": "mtn",
+        "_client": {
+          "timezone": "Africa/Douala",
+          "language": "fr-CM",
+          "screen": "1080x2400",
+          "color_depth": 24,
+          "fingerprint": "9f2c4e1a7b3d5f60",
+          "client": "wajub-flutter/1.6.0 (android 15)"
+        }
+      }
+    }
+  },
+  "http_status": 422,
+  "body": {
+    "code": 422,
+    "status": "Unprocessable Content",
+    "message": "Security challenge verification failed. Please refresh the page and try again.",
+    "error_code": "security_check_failed",
+    "errors": {
+      "request": [
+        "Security challenge verification failed. Please refresh the page and try again."
+      ]
+    }
+  }
+}

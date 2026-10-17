@@ -34,14 +34,134 @@ public enum CheckoutScreen: Equatable, Sendable {
 public struct ApprovalScreen: Equatable, Sendable {
     /// The number the push was sent to, when the sheet knows it.
     public var phone: String?
-    /// The API's (English) instruction; may hold a USSD fallback.
+    /// The operator's instruction (English), which may give a code to dial.
     public var instruction: String?
+    /// The payer's own code was received: say so instead of asking to approve on the phone.
+    public var payerOTPReceived = false
+
+    /// What the screen says: its title, the line naming the amount and the phone the request went to,
+    /// and the line waiting on the phone. After the payer's own code, only that it was received.
+    package struct Texts: Equatable, Sendable {
+        package var title: String
+        package var phoneLine: String?
+        package var waiting: String?
+    }
+
+    package func texts(_ strings: WajubStrings, amount: String) -> Texts {
+        if payerOTPReceived {
+            return Texts(title: strings.payerOTPApprovalMessage, phoneLine: nil, waiting: nil)
+        }
+        return Texts(title: strings.approvalTitle, phoneLine: strings.approvalBody(amount: amount, phone: phone),
+                     waiting: strings.waitingForApproval)
+    }
+}
+
+/// The code the payer generates in their operator's menu, for the exact amount, before paying.
+/// While it is shown, `CheckoutController.screen` is `.form` and `stateName` is `PAYER_OTP_REQUIRED`.
+public struct PayerOTPScreen: Equatable, Sendable {
+    /// One step to get the code, in parts to draw: the code to dial and the amount stand out.
+    public struct StepLine: Equatable, Sendable {
+        public enum Part: Equatable, Sendable {
+            case text(String)
+            /// The code to dial (copy it; iOS cannot dial it from a link).
+            case ussdCode(String)
+            /// The exact amount, to show in bold.
+            case amount(String)
+        }
+
+        public var parts: [Part]
+
+        /// The step as plain text.
+        public var text: String {
+            parts.map { part -> String in
+                switch part {
+                case .text(let text), .ussdCode(let text), .amount(let text): return text
+                }
+            }.joined()
+        }
+    }
+
+    public var instructions: PayerOTPInstructions
+    /// The steps in the sheet's language.
+    public var steps: [StepLine]
+    /// Why the last code was not taken, shown on the screen.
+    public var message: String?
+    /// How many more codes the operator may refuse, when the answer said it.
+    public var attemptsRemaining: Int?
+    /// In a sandbox payment, the code the test operator takes.
+    public var sandboxCode: String?
+    /// The code's length: exactly `instructions.otpLength`, else 4 to 8 digits.
+    public var lengthRange: ClosedRange<Int> {
+        instructions.otpLength.map { $0...$0 } ?? 4...8
+    }
+
+    /// The exact amount to type, as the operator wants it; `nil` when none was given.
+    public var exactAmount: String? {
+        guard !instructions.amount.isEmpty else { return nil }
+        return instructions.currency.isEmpty ? instructions.amount : "\(instructions.amount) \(instructions.currency)"
+    }
+    /// Increases with each answer that refused a code, so a drawn field can empty itself then.
+    public var refusals = 0
+
+    init(instructions: PayerOTPInstructions, language: WajubLanguage, sandbox: Bool) {
+        self.instructions = instructions
+        steps = PayerOTPScreen.lines(instructions, language: language)
+        sandboxCode = sandbox ? PayerOTPScreen.sandboxCode : nil
+    }
+
+    /// The code the sandbox operator takes.
+    static let sandboxCode = "123456"
+
+    /// The steps of the sheet's language (else English, else French), from their template, or their text
+    /// when the template names something else or misses a value; none: the generic steps.
+    static func lines(_ instructions: PayerOTPInstructions, language: WajubLanguage) -> [StepLine] {
+        let steps = instructions.steps[language.rawValue] ?? instructions.steps["en"] ?? instructions.steps["fr"] ?? []
+        guard !steps.isEmpty else {
+            return WajubStrings(language).payerOTPGenericSteps.map { template in
+                // Without an amount, the step says it without one.
+                let bare = template.replacingOccurrences(of: " : {amount}", with: "").replacingOccurrences(of: ": {amount}", with: "")
+                return line(template, ussdCode: instructions.ussdCode, amount: instructions.amount, currency: instructions.currency,
+                            genericAmount: true) ?? StepLine(parts: [.text(bare)])
+            }
+        }
+        return steps.map { step in
+            step.template.flatMap {
+                line($0, ussdCode: instructions.ussdCode, amount: instructions.amount, currency: instructions.currency, genericAmount: false)
+            } ?? StepLine(parts: [.text(step.text)])
+        }
+    }
+
+    /// A template's parts, or `nil` when it names another placeholder or one without a value.
+    private static func line(_ template: String, ussdCode: String?, amount: String, currency: String, genericAmount: Bool) -> StepLine? {
+        var parts: [StepLine.Part] = []
+        var rest = Substring(template)
+        while let open = rest.firstIndex(of: "{") {
+            guard let close = rest[open...].firstIndex(of: "}") else { break }
+            if open > rest.startIndex { parts.append(.text(String(rest[rest.startIndex..<open]))) }
+            switch rest[rest.index(after: open)..<close] {
+            case "ussd_code":
+                guard let ussdCode else { return nil }
+                parts.append(.ussdCode(ussdCode))
+            case "amount":
+                guard !amount.isEmpty else { return nil }
+                parts.append(.amount(genericAmount && !currency.isEmpty ? "\(amount) \(currency)" : amount))
+            case "currency":
+                guard !currency.isEmpty else { return nil }
+                parts.append(.text(currency))
+            default:
+                return nil
+            }
+            rest = rest[rest.index(after: close)...]
+        }
+        if !rest.isEmpty { parts.append(.text(String(rest))) }
+        return StepLine(parts: parts)
+    }
 }
 
 public struct StepScreen: Equatable, Sendable {
     public var kind: ConfirmStepKind
     public var id: String
-    /// `otp_masked_contact` or the step's instruction (English).
+    /// Where the code was sent, or the step's instruction (English).
     public var hint: String?
     public var attemptsRemaining: Int?
     /// The last refusal, shown inline.
@@ -64,7 +184,7 @@ public struct PendingScreen: Equatable, Sendable {
     public var continueURL: String?
     /// 3-D Secure runs in the browser (`3DS_REQUIRED` while it is open).
     public var threeDS: Bool
-    /// The 15-minute watch cap was reached: "you will be notified".
+    /// The sheet stopped waiting for the outcome: the payer is told they will be notified.
     public var capReached: Bool
 
     public init(continueURL: String? = nil, threeDS: Bool = false, capReached: Bool = false) {
@@ -74,7 +194,7 @@ public struct PendingScreen: Equatable, Sendable {
     }
 }
 
-/// The card form: contact fields (hosted page or client session) or the sandbox test card.
+/// The card form: the contact fields a provider asks for, or the sandbox test card.
 public struct CardForm: Equatable, Sendable {
     public static let sandboxFields = ["card.number", "card_holder", "expiry_month", "expiry_year", "cvv"]
 
@@ -118,11 +238,11 @@ public struct CardForm: Equatable, Sendable {
         return errors
     }
 
-    /// The values to send, trimmed (the country upper-cased).
+    /// The values to send, trimmed, with ASCII digits (the country upper-cased).
     var payload: [String: String] {
         var payload: [String: String] = [:]
         for field in fields {
-            let value = (values[field] ?? "").trimmingCharacters(in: .whitespaces)
+            let value = Digits.ascii(values[field] ?? "").trimmingCharacters(in: .whitespaces)
             guard !value.isEmpty else { continue }
             payload[field] = field == "country" ? value.uppercased() : value
         }

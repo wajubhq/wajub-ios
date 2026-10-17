@@ -57,7 +57,7 @@ struct RealtimeEndpoint: Equatable, Sendable {
 
     /// `echo` (and `PresentOptions.realtime`); `nil` when realtime cannot run: no `echo`, no `key`,
     /// no host, or turned off.
-    init?(echo: EchoConfig?, override: RealtimeOptions?, transactionId: String) {
+    init?(echo: EchoConfig?, override: RealtimeOverride?, transactionId: String) {
         if override?.enabled == false { return nil }
         guard let echo, let key = echo.key, !transactionId.isEmpty else { return nil }
         var tls = true

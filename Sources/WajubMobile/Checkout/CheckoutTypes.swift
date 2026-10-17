@@ -1,6 +1,6 @@
 import Foundation
 
-/// The sheet's state: Wajub.js's 17 `CheckoutState` names, exactly.
+/// The sheet's state; its raw value is the state's name (`INITIATED`, `3DS_REQUIRED`…).
 public enum CheckoutState: String, Sendable, CaseIterable {
     case initiated = "INITIATED"
     case collectingDetails = "COLLECTING_DETAILS"
@@ -21,21 +21,21 @@ public enum CheckoutState: String, Sendable, CaseIterable {
     case cancelled = "CANCELLED"
 }
 
-/// Wajub.js's `PaymentSuccess`. Confirm the payment server-side (`GET /payments/{id}` or the
+/// A successful payment. Confirm it on your server (`GET /payments/{id}` or the
 /// `payment.succeeded` webhook) before you deliver.
 public struct PaymentSuccess: Equatable, Sendable {
-    /// `transaction.id`.
+    /// Wajub's payment id, what `GET /payments/{id}` takes.
     public var id: String
     /// The merchant's reference.
     public var reference: String?
-    /// `amount_total`, major units.
+    /// What the payer paid, fee included, in major units.
     public var amount: Double
     public var currency: String
     /// `mobile_money`, `card`, `wallet`, or `unknown` when the session was already paid at load.
     public var method: String
     /// Always `"success"`.
     public var status: String { "success" }
-    /// ISO 8601: `terminal_at`, else `updated_at`, else now.
+    /// When the payment succeeded, ISO 8601.
     public var timestamp: String
     public var receiptURL: String?
 
@@ -68,11 +68,11 @@ public enum CancelReason: String, Sendable {
     case hostGone = "host_gone"
 }
 
-/// What `present()` resolves with, exactly once (states.md §4).
+/// What `present()` resolves with, exactly once.
 public enum CheckoutResult: Equatable, Sendable {
     /// The sheet closed after `SUCCESS`.
     case complete(payment: PaymentSuccess, transaction: SessionTransaction?)
-    /// The sheet closed while an attempt was running (money may still move), or the watch reached its 15-minute cap.
+    /// The sheet closed while a payment was under way (money may still move), or it stopped waiting for the outcome.
     case processing(transaction: SessionTransaction?)
     /// The sheet closed on `FAILED`, `EXPIRED`, a load error, or a payment cancelled elsewhere.
     case failed(error: WajubError, transaction: SessionTransaction?)
@@ -101,9 +101,12 @@ public struct ReadyEvent: Equatable, Sendable {
 }
 
 public struct StateChangeEvent: Equatable, Sendable {
+    /// While the payer generates their operator's code, `.collectingDetails`: `name` says `PAYER_OTP_REQUIRED`.
     public var state: CheckoutState
     /// `mobile_money`, `card`, `wallet` or `unknown`.
     public var method: String?
+    /// The state's name: `state`'s, or `PAYER_OTP_REQUIRED` while the payer generates their operator's code.
+    public var name: String = ""
 }
 
 public struct PaymentStartedEvent: Equatable, Sendable {
@@ -111,7 +114,7 @@ public struct PaymentStartedEvent: Equatable, Sendable {
     public var channel: String
 }
 
-/// Wajub.js's redirect event: the SDK is about to open `url` in the system browser.
+/// A provider page the sheet is about to open in the browser.
 public struct RedirectEvent: Equatable, Sendable {
     public var url: String
     /// Always `"GET"`.
@@ -158,7 +161,8 @@ public struct CheckoutCallbacks {
     }
 }
 
-/// `PresentOptions.realtime`: another Pusher-protocol host (a self-hosted Reverb or Soketi), or none.
+/// Deprecated: the payment's live updates need no setting, and this option will be removed.
+@available(*, deprecated, message: "The payment's live updates need no setting; this option will be removed.")
 public struct RealtimeOptions: Equatable, Sendable {
     public var enabled: Bool
     public var host: String?
@@ -173,7 +177,15 @@ public struct RealtimeOptions: Equatable, Sendable {
     }
 }
 
-/// What `present()` takes (`types.ts` `PresentOptions`).
+/// Where the live updates connect, when the deprecated `PresentOptions.realtime` says so.
+struct RealtimeOverride: Equatable, Sendable {
+    var enabled = true
+    var host: String?
+    var port: Int?
+    var tls: Bool?
+}
+
+/// What `present()` takes.
 public struct PresentOptions {
     /// The payment's `authorization_token`, from your server.
     public var sessionToken: String
@@ -183,22 +195,27 @@ public struct PresentOptions {
     public var loader: LoaderStyle
     /// Milliseconds before an unready sheet reports `ready_timeout`; `0` disables it.
     public var readyTimeout: Int
-    /// An `https` universal link back into your app, sent as `return_url` to provider pages.
+    /// An `https` universal link that brings the payer back to your app from a provider's page.
     public var returnURL: String?
     public var mobileMoney: MobileMoneyOptions
-    /// Overrides the session's realtime host, or turns realtime off.
-    public var realtime: RealtimeOptions?
-    /// A dismiss before any attempt cancels the payment (`POST /pay/cancel`). Default `true`.
+    /// Deprecated: the payment's live updates need no setting, and this option will be removed.
+    @available(*, deprecated, message: "The payment's live updates need no setting; this option will be removed.")
+    public var realtime: RealtimeOptions? {
+        get { realtimeOverride.map { RealtimeOptions(enabled: $0.enabled, host: $0.host, port: $0.port, tls: $0.tls) } }
+        set { realtimeOverride = newValue.map { RealtimeOverride(enabled: $0.enabled, host: $0.host, port: $0.port, tls: $0.tls) } }
+    }
+    var realtimeOverride: RealtimeOverride?
+    /// A dismiss before any attempt cancels the payment. Default `true`.
     public var cancelOnDismiss: Bool
     /// Milliseconds before the success screen closes itself; `0` keeps it. Default 3000.
     public var autoCloseSuccess: Int
     public var callbacks: CheckoutCallbacks
-    /// Collects cards for Stripe (`stripe_elements`). Without one, a Stripe card channel is not offered.
+    /// Collects cards with Stripe's SDK. Without one, Stripe card payments are not offered.
     public var cardCollector: CardCollector?
 
     public init(sessionToken: String, locale: String? = nil, appearance: Appearance? = nil, loader: LoaderStyle = .skeleton,
                 readyTimeout: Int = 15_000, returnURL: String? = nil, mobileMoney: MobileMoneyOptions = MobileMoneyOptions(),
-                realtime: RealtimeOptions? = nil, cancelOnDismiss: Bool = true, autoCloseSuccess: Int = 3_000,
+                cancelOnDismiss: Bool = true, autoCloseSuccess: Int = 3_000,
                 callbacks: CheckoutCallbacks = CheckoutCallbacks(), cardCollector: CardCollector? = nil) {
         self.sessionToken = sessionToken
         self.locale = locale
@@ -207,17 +224,28 @@ public struct PresentOptions {
         self.readyTimeout = readyTimeout
         self.returnURL = returnURL
         self.mobileMoney = mobileMoney
-        self.realtime = realtime
         self.cancelOnDismiss = cancelOnDismiss
         self.autoCloseSuccess = autoCloseSuccess
         self.callbacks = callbacks
         self.cardCollector = cardCollector
     }
+
+    /// Deprecated: the same without `realtime`, which needs no setting and will be removed.
+    @available(*, deprecated, message: "The payment's live updates need no setting; drop `realtime:`, which will be removed.")
+    public init(sessionToken: String, locale: String? = nil, appearance: Appearance? = nil, loader: LoaderStyle = .skeleton,
+                readyTimeout: Int = 15_000, returnURL: String? = nil, mobileMoney: MobileMoneyOptions = MobileMoneyOptions(),
+                realtime: RealtimeOptions? = nil, cancelOnDismiss: Bool = true, autoCloseSuccess: Int = 3_000,
+                callbacks: CheckoutCallbacks = CheckoutCallbacks(), cardCollector: CardCollector? = nil) {
+        self.init(sessionToken: sessionToken, locale: locale, appearance: appearance, loader: loader, readyTimeout: readyTimeout,
+                  returnURL: returnURL, mobileMoney: mobileMoney, cancelOnDismiss: cancelOnDismiss,
+                  autoCloseSuccess: autoCloseSuccess, callbacks: callbacks, cardCollector: cardCollector)
+        self.realtime = realtime
+    }
 }
 
 /// What a card collector receives.
 public struct CardCollectionRequest: Equatable, Sendable {
-    /// The provider's publishable key, from sdk-config (Stripe: `pk_…`).
+    /// The Stripe publishable key to use (`pk_…`).
     public var publishableKey: String
     public var amount: Double
     public var currency: String

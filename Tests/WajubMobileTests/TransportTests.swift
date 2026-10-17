@@ -68,7 +68,7 @@ final class TransportTests: XCTestCase {
             XCTAssertEqual(request.header("Accept"), "application/json")
             XCTAssertEqual(request.header("Accept-Language"), "fr-CM, fr;q=0.9, en;q=0.8")
             XCTAssertNotNil(UUID(uuidString: request.header("X-Request-Id") ?? ""))
-            XCTAssertEqual(request.header("X-Wajub-Client"), "wajub-ios/1.0.0 (ios 18.1)")
+            XCTAssertEqual(request.header("X-Wajub-Client"), "wajub-ios/1.1.0 (ios 18.1)")
         }
         XCTAssertNil(transport.requests[0].header("Content-Type"), "a GET has no body")
         XCTAssertNotEqual(transport.requests[0].header("X-Request-Id"), transport.requests[1].header("X-Request-Id"))
@@ -82,7 +82,7 @@ final class TransportTests: XCTestCase {
         let transport = FakeTransport()
         transport.answer("session-cm-aggregate")
         _ = try await client(transport).session()
-        XCTAssertEqual(transport.requests[0].header("User-Agent"), "ShopApp/2.3 wajub-ios/1.0.0 (ios 18.1)")
+        XCTAssertEqual(transport.requests[0].header("User-Agent"), "ShopApp/2.3 wajub-ios/1.1.0 (ios 18.1)")
         XCTAssertTrue(DeviceEnvironment.test().userAgent.hasSuffix(DeviceEnvironment.test().clientIdentifier))
     }
 
@@ -101,7 +101,7 @@ final class TransportTests: XCTestCase {
         XCTAssertEqual(first["language"]?.string, "fr-CM")
         XCTAssertEqual(first["screen"]?.string, "1080x2400")
         XCTAssertEqual(first["color_depth"]?.int, 24)
-        XCTAssertEqual(first["client"]?.string, "wajub-ios/1.0.0 (ios 18.1)")
+        XCTAssertEqual(first["client"]?.string, "wajub-ios/1.1.0 (ios 18.1)")
         let fingerprint = try XCTUnwrap(first["fingerprint"]?.string)
         XCTAssertTrue((16...64).contains(fingerprint.count))
         XCTAssertTrue(fingerprint.allSatisfy { "0123456789abcdef".contains($0) })

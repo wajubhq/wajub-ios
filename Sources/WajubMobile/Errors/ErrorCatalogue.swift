@@ -76,6 +76,9 @@ enum ErrorCatalogue {
                               en: "Payment declined by the issuer.", fr: "Paiement refusé par l'émetteur."),
         "insufficient_funds": E(type: .paymentError, retryable: true,
                                 en: "Insufficient funds.", fr: "Fonds insuffisants."),
+        "otp_attempts_exceeded": E(type: .paymentError, retryable: true,
+                                   en: "Your operator refused too many codes for this payment. Choose another payment method.",
+                                   fr: "Votre opérateur a refusé trop de codes pour ce paiement. Choisissez un autre moyen de paiement."),
         "merchant_not_verified": E(type: .paymentError, retryable: false,
                                    en: "This merchant can't accept payments yet. Please contact them.",
                                    fr: "Ce marchand ne peut pas encore accepter de paiements. Veuillez le contacter."),
@@ -100,6 +103,13 @@ enum ErrorCatalogue {
         "channel_not_accepted": E(type: .paymentError, retryable: true,
                                   en: "This payment method is not available for this payment.",
                                   fr: "Ce moyen de paiement n'est pas disponible pour ce paiement."),
+        // The two refusals of /pay/cancel (a payment_in_progress on /pay/process is no error: the sheet waits).
+        "payment_partly_paid": E(type: .invalidRequestError, retryable: false,
+                                 en: "Part of this payment has already been paid, so it can't be cancelled.",
+                                 fr: "Une partie de ce paiement a déjà été réglée : il ne peut plus être annulé."),
+        "payment_in_progress": E(type: .invalidRequestError, retryable: false,
+                                 en: "This payment is being paid and can't be cancelled now.",
+                                 fr: "Ce paiement est en cours de règlement et ne peut pas être annulé maintenant."),
         "payment_failed": E(type: .paymentError, retryable: false,
                             en: "Your payment could not be processed.", fr: "Votre paiement n'a pas pu être traité."),
         "payment_attempt_ended": E(type: .paymentError, retryable: true,
@@ -179,6 +189,8 @@ enum ErrorCatalogue {
 enum ErrorPhase: Sendable {
     case loading
     case payment
+    /// `/pay/cancel`: a payment on its way (`payment_in_progress`) is a refusal to cancel there.
+    case cancel
 }
 
 extension WajubError {
@@ -205,7 +217,8 @@ extension WajubError {
     static func stepFailure(code: String, apiMessage: String?, attemptsRemaining: Int?, _ language: WajubLanguage) -> WajubError {
         var error: WajubError
         if ErrorCatalogue.entries[code] != nil {
-            error = catalogue(code, language, values: ["n": String(attemptsRemaining ?? 0)])
+            // Without the count, the sentence giving it is left out.
+            error = catalogue(code, language, values: attemptsRemaining.map { ["n": String($0)] } ?? [:])
         } else {
             error = WajubError(type: .invalidRequestError, code: code,
                                message: language == .en ? (apiMessage ?? ErrorCatalogue.entries[Code.validationError]!.en)
@@ -245,13 +258,17 @@ extension WajubError {
 
         let retryAfter = body?.retryAfter ?? answer.header("Retry-After").flatMap { Int($0.trimmingCharacters(in: .whitespaces)) }
         let apiMessage = body?.nestedError?.message ?? body?.message
-        let values = ["seconds": String(retryAfter ?? 0), "block_reference": body?.blockReference ?? "",
-                      "n": String(body?.attemptsRemaining ?? 0)]
+        var values: [String: String] = [:]
+        if let retryAfter { values["seconds"] = String(retryAfter) }
+        if let reference = body?.blockReference { values["block_reference"] = reference }
+        if let remaining = body?.attemptsRemaining { values["n"] = String(remaining) }
 
         let type: WajubErrorType
         let retryable: Bool
         let message: String
-        if let entry = ErrorCatalogue.entries[code] {
+        // payment_in_progress has its catalogue text on /pay/cancel only; elsewhere it is passed through.
+        let catalogued = code == Code.paymentInProgress && phase != .cancel ? nil : ErrorCatalogue.entries[code]
+        if let entry = catalogued {
             type = entry.type
             retryable = entry.retryable
             if code == Code.validationError, language == .en, let apiMessage {

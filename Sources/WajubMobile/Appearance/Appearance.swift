@@ -1,10 +1,10 @@
 import Foundation
 
-/// `theme`: a colour scheme (`light`, `dark`, `auto`, `system`) or one of Wajub.js's presets.
+/// `theme`: a colour scheme (`light`, `dark`, `auto`, `system`) or a preset (`stripe`, `night`, `flat`, `noPreset`).
 public enum AppearanceTheme: String, Sendable, CaseIterable {
     case light, dark, auto, system, stripe, night, flat
-    /// Wajub.js's `"none"` preset: no preset values, only your own. Named so that `theme: .noPreset`
-    /// can't be read as `Optional.none`.
+    /// The `"none"` preset: no preset values, only your own. Named so that `theme: .noPreset` can't be
+    /// read as `Optional.none`.
     case noPreset = "none"
 }
 
@@ -15,7 +15,7 @@ public enum AppearanceColorScheme: String, Sendable, CaseIterable {
 
 /// `shadow`: the sheet's elevation.
 public enum AppearanceShadow: String, Sendable, CaseIterable {
-    /// Wajub.js's `"none"`: no elevation. Named so that `shadow: .noShadow` can't be read as `Optional.none`.
+    /// No shadow (`"none"`). Named so that `shadow: .noShadow` can't be read as `Optional.none`.
     case noShadow = "none"
     case low, high
 }
@@ -25,8 +25,8 @@ public enum AppearanceLabels: String, Sendable, CaseIterable {
     case above, floating
 }
 
-/// Wajub.js's appearance variables, same names (`appearance.js:54-71`). Values are CSS-like strings:
-/// colours `#rrggbb`/`rgb()`, lengths `"8px"`, `"8"`, `"0.5rem"`, weights `"600"`/`"bold"`.
+/// The appearance variables. Values are CSS-like strings: colours `#rrggbb`/`rgb()`, lengths `"8px"`,
+/// `"8"`, `"0.5rem"`, weights `"600"`/`"bold"`.
 public struct AppearanceVariables: Equatable, Sendable {
     public var colorPrimary: String?
     public var colorBackground: String?
@@ -69,7 +69,7 @@ public struct AppearanceVariables: Equatable, Sendable {
         self.spacingGridColumn = spacingGridColumn
     }
 
-    /// Reads Wajub.js's `variables` object; unknown keys and non-string values are ignored.
+    /// Reads a `variables` object from JSON; unknown keys and non-string values are ignored.
     public init(json: JSONValue) {
         func text(_ key: String) -> String? {
             guard let value = json[key] else { return nil }
@@ -86,12 +86,12 @@ public struct AppearanceVariables: Equatable, Sendable {
     }
 }
 
-/// `PresentOptions.appearance`: the same object as Wajub.js 1.8's `AppearanceConfig`, so the web
-/// Components and the native sheet are styled alike. Values that do not parse are ignored.
+/// The sheet's look (`PresentOptions.appearance`): a preset, a colour scheme, variables and colours.
+/// Values that do not parse are ignored.
 public struct Appearance: Equatable, Sendable {
     public var theme: AppearanceTheme?
     public var colorScheme: AppearanceColorScheme?
-    /// Take the host app's own theme (appearance.md §3).
+    /// Take the presenting screen's tint, colours and light or dark style.
     public var inherit: Bool?
     public var variables: AppearanceVariables
     public var primaryColor: String?
@@ -136,8 +136,8 @@ public struct Appearance: Equatable, Sendable {
         self.disableAnimations = disableAnimations
     }
 
-    /// Reads Wajub.js's appearance object (for an app that shares it with its web checkout).
-    /// Unknown keys (`rules` included) and values that do not parse are ignored.
+    /// Reads the appearance object from JSON, for an app that shares one with its web checkout.
+    /// Unknown keys and values that do not parse are ignored.
     public init(json: JSONValue) {
         func text(_ key: String) -> String? {
             guard let value = json[key] else { return nil }
@@ -158,7 +158,7 @@ public struct Appearance: Equatable, Sendable {
                   disableAnimations: json["disableAnimations"]?.bool)
     }
 
-    /// Wajub.js's presets, identical values (`appearance.js:26-47`).
+    /// A preset's values; `nil` for a colour scheme.
     public static func preset(_ theme: AppearanceTheme) -> Appearance? {
         switch theme {
         case .stripe:
@@ -185,7 +185,7 @@ public enum LoaderStyle: String, Sendable {
     /// A centred activity indicator in `primary`.
     case spinner
 
-    /// Wajub.js's `"none"` is a spinner on mobile.
+    /// Reads a loader name: `"skeleton"`, else a spinner (`"none"` included).
     public init(wajubJS value: String) {
         self = value == "skeleton" ? .skeleton : .spinner
     }

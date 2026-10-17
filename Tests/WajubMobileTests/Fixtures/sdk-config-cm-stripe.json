@@ -9,6 +9,26 @@
     "status": "OK",
     "message": "SDK configuration retrieved",
     "channels": {
+      "card": {
+        "available": true,
+        "provider": "stripe",
+        "sdk": "stripe_elements",
+        "publishable_key": "pk_live_51Hx4mPLACEHOLDER",
+        "required_fields": [
+          "payment_method_id"
+        ],
+        "client_session": false
+      },
+      "cm.mobile": {
+        "available": true,
+        "provider": "system",
+        "sdk": "form",
+        "publishable_key": null,
+        "required_fields": [
+          "phone"
+        ],
+        "client_session": false
+      },
       "cm.mtn": {
         "available": true,
         "provider": "system",
@@ -26,16 +46,6 @@
         "publishable_key": null,
         "required_fields": [
           "phone"
-        ],
-        "client_session": false
-      },
-      "card": {
-        "available": true,
-        "provider": "stripe",
-        "sdk": "stripe_elements",
-        "publishable_key": "pk_live_51Hx4mPLACEHOLDER",
-        "required_fields": [
-          "payment_method_id"
         ],
         "client_session": false
       }

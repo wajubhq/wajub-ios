@@ -1,11 +1,11 @@
 import Foundation
 
-/// Thrown when a body cannot be read as the model it should be (only `transaction.amount` is required).
+/// Thrown when an answer cannot be read (only the payment's amount is required).
 public struct WireDecodingError: Error, Equatable, Sendable {
     public let field: String
 }
 
-/// A payment status (`TransactionStatus.php`). Unknown values are kept as they are.
+/// A payment status. Unknown values are kept as they are.
 public struct TransactionStatus: RawRepresentable, Hashable, Sendable, CustomStringConvertible {
     public let rawValue: String
     public init(rawValue: String) { self.rawValue = rawValue }
@@ -26,13 +26,13 @@ public struct TransactionStatus: RawRepresentable, Hashable, Sendable, CustomStr
     public var description: String { rawValue }
 }
 
-/// `transaction.processing_context`: present only while `processing` or `partial`.
+/// What a payment under way is waiting for: present only while it is `processing` or `partial`.
 public struct ProcessingContext: Equatable, Sendable {
     public var channelSlug: String?
     public var isMobileMoney: Bool
     public var isUSSD: Bool
     public var isBankTransfer: Bool
-    /// English; may hold a USSD fallback ("dial *126#").
+    /// The operator's instruction, in English; it may give a code to dial.
     public var payerInstruction: String?
     /// A provider page to reopen.
     public var actionURL: String?
@@ -79,11 +79,11 @@ public struct Customer: Equatable, Sendable {
     }
 }
 
-/// `transaction` of `GET /pay/session` and of the payment answers. Amounts are major units.
+/// A payment, as the sheet reads it. Amounts are in major units.
 public struct SessionTransaction: Equatable, Sendable {
-    /// Wajub's payment id (`trx_…`): the realtime channel suffix and `PaymentSuccess.id`.
+    /// Wajub's payment id (`trx_…`), what `GET /payments/{id}` takes.
     public var id: String
-    /// The merchant's reference (= `trxref`). Not the `reference` of `GET /pay/status`.
+    /// Your reference for the payment. Not `StatusUpdate.reference`, which is Wajub's payment id.
     public var reference: String?
     public var trxref: String?
     public var amount: Double
@@ -108,6 +108,9 @@ public struct SessionTransaction: Equatable, Sendable {
     public var processingContext: ProcessingContext?
     /// A refused try's code, when the payment carries one.
     public var errorCode: String?
+    /// The answer has the `error_code` key (even `null`): an older API leaves it out, and then whether
+    /// the payment carries a refusal is unknown. Not part of the transaction's equality.
+    @EqualityIgnored var hasErrorCodeKey = false
 
     public init(json: JSONValue) throws {
         guard let amount = json["amount"]?.double else { throw WireDecodingError(field: "transaction.amount") }
@@ -134,6 +137,7 @@ public struct SessionTransaction: Equatable, Sendable {
         terminalAt = json["terminal_at"]?.nonEmptyString
         processingContext = json["processing_context"].flatMap { $0.object == nil ? nil : ProcessingContext(json: $0) }
         errorCode = json["error_code"]?.nonEmptyString
+        hasErrorCodeKey = json["error_code"] != nil
     }
 
     /// A transaction in an optional position: `nil` when absent or unreadable.
@@ -151,14 +155,27 @@ public struct ChannelOperator: Equatable, Sendable {
     public var operatorId: String
     /// In the session's locale.
     public var name: String
+    /// Mostly an SVG, which iOS does not draw.
     public var logo: String?
+    /// The same logo as a PNG, when the API has one.
+    public var logoPNG: String?
+    /// The payer's fee on this operator, when the payer bears a fee that depends on it.
+    public var feeAmount: Double?
+    /// What the payer pays on this operator, fee included, when it differs by operator.
+    public var amountTotal: Double?
 
     public init(json: JSONValue) {
         slug = json["slug"]?.string ?? ""
         operatorId = json["operator"]?.string ?? ""
         name = json["name"]?.string ?? ""
         logo = json["logo"]?.nonEmptyString
+        logoPNG = json["logo_png"]?.nonEmptyString
+        feeAmount = json["fee_amount"]?.double
+        amountTotal = json["amount_total"]?.double
     }
+
+    /// The logo iOS can draw: the PNG, else a logo that is not an SVG; `nil` otherwise.
+    public var drawableLogo: String? { ChannelLogo.drawable(logo: logo, png: logoPNG) }
 }
 
 /// A payment channel of the session.
@@ -167,11 +184,14 @@ public struct SessionChannel: Equatable, Sendable {
     public var slug: String
     /// In the session's locale.
     public var name: String
-    /// Always French (the literal key `name.fr`).
+    /// The name in French.
     public var nameFr: String?
-    /// `mobile_money`, `mobile`, `card`, `wallet`, …
+    /// The kind of payment method: Mobile Money (`isMobileMoney`), card or wallet.
     public var type: String
+    /// Mostly an SVG, which iOS does not draw.
     public var logo: String?
+    /// The same logo as a PNG, when the API has one.
+    public var logoPNG: String?
     /// ISO-2, upper case. May be empty (card).
     public var countries: [String]
     public var minAmount: Double?
@@ -179,6 +199,12 @@ public struct SessionChannel: Equatable, Sendable {
     public var currency: String?
     /// Aggregates only.
     public var operators: [ChannelOperator]
+    /// The payer's fee on this channel, when the payer bears a fee that depends on it.
+    public var feeAmount: Double?
+    /// What the payer pays on this channel, fee included, when it differs by channel.
+    public var amountTotal: Double?
+    /// Mobile Money: the payer will generate a code in the operator's menu before paying.
+    public var payerOTP: PayerOTPInstructions?
 
     public init(json: JSONValue) {
         slug = json["slug"]?.string ?? json["id"]?.string ?? ""
@@ -187,11 +213,15 @@ public struct SessionChannel: Equatable, Sendable {
         nameFr = json["name.fr"]?.nonEmptyString
         type = json["type"]?.string ?? ""
         logo = json["logo"]?.nonEmptyString
+        logoPNG = json["logo_png"]?.nonEmptyString
         countries = json["countries"]?.strings.map { $0.uppercased() } ?? []
         minAmount = json["min_amount"]?.double
         maxAmount = json["max_amount"]?.double
         currency = json["currency"]?.nonEmptyString
         operators = (json["operators"]?.array ?? []).map(ChannelOperator.init(json:))
+        feeAmount = json["fee_amount"]?.double
+        amountTotal = json["amount_total"]?.double
+        payerOTP = json["payer_otp"].flatMap { $0.object == nil ? nil : PayerOTPInstructions(json: $0) }
     }
 
     /// `mobile_money` or `mobile`.
@@ -200,13 +230,16 @@ public struct SessionChannel: Equatable, Sendable {
     /// An aggregate (`cm.mobile`) folds several operators.
     public var isAggregate: Bool { !operators.isEmpty }
 
-    /// The name for the sheet's language: `name.fr` in French, `name` in English.
+    /// The logo iOS can draw: the PNG, else a logo that is not an SVG; `nil` otherwise.
+    public var drawableLogo: String? { ChannelLogo.drawable(logo: logo, png: logoPNG) }
+
+    /// The name in the sheet's language.
     public func localizedName(_ language: WajubLanguage) -> String {
         language == .fr ? (nameFr ?? name) : name
     }
 }
 
-/// `branding.white_label`: a boolean, or the web's object form.
+/// The merchant's white-label setting.
 public struct WhiteLabel: Equatable, Sendable {
     public var enabled: Bool
     public var brandName: String?
@@ -293,15 +326,15 @@ public struct Branding: Equatable, Sendable {
     /// `true` hides "Secured by Wajub".
     public var isWhiteLabel: Bool { whiteLabel?.enabled ?? false }
 
-    /// The header logo: `logo_url`, else `logo_square_url`, else `icon_url`.
+    /// The logo the sheet's header shows.
     public var headerLogoURL: String? { logoURL ?? logoSquareURL ?? iconURL }
 }
 
-/// `echo`: where the realtime socket is.
+/// Where the sheet gets the payment's live updates; your app does not need it.
 public struct EchoConfig: Equatable, Sendable {
-    /// `nil` when broadcasting is not configured: poll only.
+    /// `nil` when live updates are not available.
     public var key: String?
-    /// Scheme included: `wss://ws.wajub.com`.
+    /// Used by the sheet for the live updates; your app does not need it.
     public var wsHost: String?
     public var wsPort: Int?
     public var channelPrefix: String
@@ -316,7 +349,7 @@ public struct EchoConfig: Equatable, Sendable {
     }
 }
 
-/// `altcha`: a proof-of-work challenge to solve before paying.
+/// The payment's security check, solved by `AltchaSolver`.
 public struct AltchaChallenge: Equatable, Sendable {
     public var algorithm: String
     public var challenge: String
@@ -344,7 +377,7 @@ public struct AltchaChallenge: Equatable, Sendable {
     }
 }
 
-/// A saved card or Mobile Money number (`saved_methods`).
+/// A saved card or Mobile Money number.
 public struct SavedMethod: Equatable, Sendable {
     public var id: String
     public var type: String
@@ -368,7 +401,7 @@ public struct SavedMethod: Equatable, Sendable {
     }
 }
 
-/// `GET /pay/session`.
+/// A payment as the sheet loads it: transaction, branding, channels and language.
 public struct SessionResponse: Equatable, Sendable {
     public var transaction: SessionTransaction
     public var altcha: AltchaChallenge?
@@ -399,4 +432,31 @@ public struct SessionResponse: Equatable, Sendable {
         savedMethods = json["saved_methods"]?.array.map { $0.map(SavedMethod.init(json:)) }
         downloadReceipt = json["features"]?["download_receipt"]?.bool ?? false
     }
+}
+
+/// Which channel or operator logo iOS can draw (it has no SVG decoder).
+enum ChannelLogo {
+    /// `logo_png` when set, else `logo` when it is not an SVG; `https` only.
+    static func drawable(logo: String?, png: String?) -> String? {
+        if let png, isHTTPS(png) { return png }
+        guard let logo, isHTTPS(logo), !isSVG(logo) else { return nil }
+        return logo
+    }
+
+    static func isHTTPS(_ url: String) -> Bool {
+        url.lowercased().hasPrefix("https://")
+    }
+
+    static func isSVG(_ url: String) -> Bool {
+        let path = (URL(string: url)?.path ?? url).lowercased()
+        return path.hasSuffix(".svg") || path.hasSuffix(".svgz")
+    }
+}
+
+/// A stored value left out of its owner's synthesized equality.
+@propertyWrapper
+struct EqualityIgnored<Value: Sendable>: Equatable, Sendable {
+    var wrappedValue: Value
+
+    static func == (lhs: EqualityIgnored, rhs: EqualityIgnored) -> Bool { true }
 }

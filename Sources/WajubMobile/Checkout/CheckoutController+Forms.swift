@@ -15,9 +15,10 @@ extension CheckoutController {
     /// Back to the method list.
     public func backToMethods() {
         guard canGoBack else { return }
+        payerOTP = nil
+        payerOTPRequest = nil
         screen = .methods
         banner = nil
-        warning = nil
         fieldErrors = [:]
         update()
     }
@@ -25,14 +26,15 @@ extension CheckoutController {
     func openForm(_ method: CheckoutMethod) {
         currentMethod = method
         banner = nil
-        warning = nil
         fieldErrors = [:]
+        payerOTP = nil
+        payerOTPRequest = nil
         switch method.kind {
         case .mobileMoney:
             if mobileMoney == nil, let session {
                 mobileMoney = MobileMoneyForm(channels: method.channels, config: config, language: language,
                                               amount: session.transaction.amountTotal, options: options.mobileMoney,
-                                              geoCountry: session.geoCountry)
+                                              geoCountry: session.geoCountry, sandbox: isSandbox)
             }
         case .card(let flavour):
             if cardForm?.flavour != flavour {
@@ -48,14 +50,12 @@ extension CheckoutController {
     public func setCountry(_ code: String) {
         mobileMoney?.setCountry(code)
         fieldErrors = [:]
-        warning = nil
         update()
     }
 
     public func setPhone(_ text: String) {
         mobileMoney?.setPhone(text)
         fieldErrors["data.phone"] = nil
-        warning = nil
         update()
     }
 
@@ -63,7 +63,6 @@ extension CheckoutController {
         mobileMoney?.pick(id)
         fieldErrors["data.operator"] = nil
         fieldErrors["data.phone"] = nil
-        warning = nil
         update()
     }
 
@@ -80,8 +79,7 @@ extension CheckoutController {
             update()
             return
         }
-        let validation = form.validate(sandbox: isSandbox)
-        if let error = validation.error {
+        if let error = form.validate() {
             // The payer is told to pick in the list: show it.
             if error.code == WajubError.Code.operatorMismatch || error.code == WajubError.Code.operatorRequired {
                 mobileMoney?.openList()
@@ -90,10 +88,70 @@ extension CheckoutController {
             update()
             return
         }
-        warning = validation.warning
         guard let request = form.request(returnURL: options.returnURL) else { return }
+        payerOTPRequest = (request.channel, request.data, request.data["phone"]?.string)
+        if let announced = form.announcedPayerOTP {
+            // The operator will want the payer's own code: ask for it first, nothing is sent yet.
+            showPayerOTP(announced)
+            return
+        }
         pay(channel: request.channel, data: request.data, family: "mobile_money", mobileMoney: true,
             phone: request.data["phone"]?.string)
+    }
+
+    // MARK: The payer's own code (README §6.7)
+
+    /// The code screen: the steps to get the code, the code to dial, the exact amount.
+    func showPayerOTP(_ instructions: PayerOTPInstructions, message: String? = nil, attemptsRemaining: Int? = nil) {
+        isBusy = false
+        var screen = PayerOTPScreen(instructions: instructions, language: language, sandbox: isSandbox)
+        screen.message = message
+        screen.attemptsRemaining = attemptsRemaining
+        // An answer refusing a code empties the field.
+        screen.refusals = (payerOTP?.refusals ?? 0) + (message == nil ? 0 : 1)
+        payerOTP = screen
+        banner = nil
+        fieldErrors = [:]
+        self.screen = .form
+        update()
+    }
+
+    /// Pays with the code the payer generated in their operator's menu. The code is checked first
+    /// (digits, the expected length); one that fails it is not sent.
+    public func submitPayerOTP(_ code: String) {
+        guard result == nil, !isWorking, case .form = screen, let screen = payerOTP, let request = payerOTPRequest else { return }
+        let code = Digits.ascii(code).trimmingCharacters(in: .whitespaces)
+        guard Digits.isASCIIDigits(code), screen.lengthRange.contains(code.count) else {
+            let range = screen.lengthRange
+            // The tries left stay shown.
+            payerOTP?.message = strings.payerOTPLength(screen.instructions.otpLength, min: range.lowerBound, max: range.upperBound)
+            update()
+            return
+        }
+        var data = request.data
+        data["otp"] = .string(code)
+        // A new press of Pay: a new Idempotency-Key.
+        reusableKey = nil
+        payerOTP?.message = nil
+        pay(channel: request.channel, data: data, family: "mobile_money", mobileMoney: true, phone: request.phone)
+        attempt?.payerOTP = screen.instructions
+    }
+
+    /// The payer typed in the code field: a refusal shown goes away, the tries left stay.
+    package func payerOTPEdited() {
+        guard payerOTP?.message != nil else { return }
+        payerOTP?.message = nil
+        update()
+    }
+
+    /// "Use another payment method" on the code screen: back to the Mobile Money form.
+    public func leavePayerOTP() {
+        guard result == nil, !isWorking, payerOTP != nil else { return }
+        payerOTP = nil
+        payerOTPRequest = nil
+        attempt = nil
+        screen = .form
+        update()
     }
 
     // MARK: Card (README §7, §11)
@@ -104,8 +162,8 @@ extension CheckoutController {
         update()
     }
 
-    /// Pays by card with the method's flavour: collects the card (Stripe), opens a client session, or
-    /// sends the hosted page's fields or the sandbox test card.
+    /// Pays by card: through your card collector (Stripe), on the provider's page after the contact
+    /// fields it asks for, or with the sandbox test card.
     public func submitCard() {
         guard result == nil, !isWorking, case .card(let flavour)? = currentMethod?.kind, let form = cardForm else { return }
         let errors = form.validate(language)
@@ -232,7 +290,7 @@ extension CheckoutController {
 
     // MARK: Wallets (README §8)
 
-    /// One tap: pays a wallet such as Djamo and follows its page.
+    /// One tap: pays with a wallet and opens its page.
     public func payWallet() {
         guard result == nil, !isWorking, let method = currentMethod, method.kind == .wallet, let channel = method.channels.first else { return }
         var data: [String: JSONValue] = [:]

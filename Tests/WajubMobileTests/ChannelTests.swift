@@ -14,9 +14,9 @@ final class ChannelTests: XCTestCase {
 
         let sandbox = Fixtures.session("session-sandbox-cm")
         let methods = MethodResolver.methods(sandbox, config: Fixtures.config("sdk-config-sandbox"), language: .en, hasCardCollector: false)
-        XCTAssertEqual(methods.map(\.id), ["mobile_money", "card"])
-        XCTAssertEqual(methods[1].kind, .card(.sandboxForm))
-        XCTAssertEqual(methods[0].channels.map(\.slug), ["cm.eu", "cm.mobile"])
+        XCTAssertEqual(methods.map(\.id), ["card", "mobile_money"])
+        XCTAssertEqual(methods[0].kind, .card(.sandboxForm))
+        XCTAssertEqual(methods[1].channels.map(\.slug), ["cm.eu", "cm.mobile"])
 
         var body = Fixtures.body("session-ci-xof-wallets")
         for index in 0..<5 { body = body.setting(["channels", String(index), "type"], to: ["crypto", "bank", "ussd", "bnpl", "redirect"][index]) }
@@ -50,11 +50,22 @@ final class ChannelTests: XCTestCase {
     /// CH-03 resolves sdk-config for aggregates
     func test_CH_03_resolvesSdkConfigForAggregates() {
         let session = Fixtures.session("session-cm-aggregate")
-        let config = Fixtures.config("sdk-config-cm-stripe")
         let aggregate = session.channels.first { $0.slug == "cm.mobile" }!
-        XCTAssertNil(config.channels["cm.mobile"])
+        // The aggregate's own entry, beside its members'.
+        let config = Fixtures.config("sdk-config-cm-stripe")
+        XCTAssertNotNil(config.channels["cm.mobile"])
+        XCTAssertEqual(MethodResolver.mobileMoneyConfig(aggregate, config: config), config.channels["cm.mobile"])
         XCTAssertEqual(MethodResolver.mobileMoneyConfig(aggregate, operatorSlug: "cm.orange", config: config), config.channels["cm.orange"])
-        XCTAssertEqual(MethodResolver.mobileMoneyConfig(aggregate, config: config), config.channels["cm.mtn"])
+        // An older answer without it: the members' entries.
+        let older = SdkConfigResponse(json: Fixtures.body("sdk-config-cm-stripe").setting(["channels", "cm.mobile"], to: nil))
+        XCTAssertNil(older.channels["cm.mobile"])
+        XCTAssertEqual(MethodResolver.mobileMoneyConfig(aggregate, config: older), older.channels["cm.mtn"])
+        XCTAssertEqual(MethodResolver.mobileMoneyConfig(aggregate, operatorSlug: "cm.orange", config: older), older.channels["cm.orange"])
+        for shape in [config, older] {
+            XCTAssertEqual(MethodResolver.methods(session, config: shape, language: .en, hasCardCollector: true).map(\.id), ["card", "mobile_money"])
+            XCTAssertEqual(MobileMoneyForm.choices(channels: [aggregate], country: "CM", config: shape, language: .en, amount: 25000).map(\.id),
+                           ["mtn", "orange"])
+        }
 
         let withoutOrange = SdkConfigResponse(json: Fixtures.body("sdk-config-cm-stripe").setting(["channels", "cm.orange", "available"], to: false))
         let choices = MobileMoneyForm.choices(channels: [aggregate], country: "CM", config: withoutOrange, language: .en, amount: 25000)
@@ -71,9 +82,52 @@ final class ChannelTests: XCTestCase {
             XCTAssertEqual(entry.requiredFields, ["phone"])
             XCTAssertTrue(entry.available)
         }
-        XCTAssertEqual(MethodResolver.shownChannels(session, config: config, hasCardCollector: false).map(\.slug), ["cm.eu", "cm.mobile", "card"])
+        XCTAssertEqual(MethodResolver.shownChannels(session, config: config, hasCardCollector: false).map(\.slug), ["card", "cm.eu", "cm.mobile"])
+        XCTAssertNotNil(config.channels["cm.mobile"], "the sandbox Mobile Money entries")
+        // An older answer without the sandbox Mobile Money entries: form + phone too.
+        var body = Fixtures.body("sdk-config-sandbox")
+        for slug in ["cm.eu", "cm.mobile", "cm.mtn", "cm.orange"] { body = body.setting(["channels", slug], to: nil) }
+        let older = SdkConfigResponse(json: body)
+        for channel in session.channels where channel.isMobileMoney {
+            let entry = MethodResolver.mobileMoneyConfig(channel, config: older)
+            XCTAssertEqual(entry.sdk, "form")
+            XCTAssertEqual(entry.requiredFields, ["phone"])
+            XCTAssertTrue(entry.available)
+        }
+        XCTAssertEqual(MethodResolver.shownChannels(session, config: older, hasCardCollector: false).map(\.slug), ["card", "cm.eu", "cm.mobile"])
         XCTAssertEqual(MethodResolver.shownChannels(session, config: nil, hasCardCollector: false).map(\.slug), ["cm.eu", "cm.mobile"],
                        "no sdk-config at all: Mobile Money still shown, card hidden")
+    }
+
+    /// CH-06 prefers logo_png where SVG cannot be drawn
+    func test_CH_06_prefersLogoPNGWhereSVGCannotBeDrawn() {
+        // The PNG when the API has one; an SVG alone is not drawn (the brand badge or symbol instead).
+        let session = Fixtures.session("session-cm-aggregate")
+        let methods = MethodResolver.methods(session, config: Fixtures.config("sdk-config-cm-stripe"), language: .en, hasCardCollector: true)
+        XCTAssertEqual(methods.first { $0.id == "mobile_money" }?.drawableLogo, "https://api.wajub.com/img/channels/momo.png")
+        XCTAssertNil(methods.first { $0.id == "card" }?.drawableLogo, "logo_png null and an SVG logo")
+        // `logo` keeps the channel's own logo, as in 1.0.0.
+        XCTAssertEqual(methods.first { $0.id == "mobile_money" }?.logo, "https://assets.wajub.com/img/channels/momo.svg")
+        XCTAssertEqual(methods.first { $0.id == "card" }?.logo, "https://assets.wajub.com/img/channels/card.svg")
+        let aggregate = session.channels.first { $0.slug == "cm.mobile" }!
+        XCTAssertEqual(aggregate.operators.map(\.logoPNG), ["https://api.wajub.com/img/channels/momo.png",
+                                                             "https://api.wajub.com/img/channels/om.png"])
+        XCTAssertEqual(aggregate.operators.map(\.drawableLogo), aggregate.operators.map(\.logoPNG))
+
+        // An older answer without logo_png: an SVG logo is not drawn, another one is.
+        let ivorian = Fixtures.session("session-ci-xof-wallets")
+        XCTAssertTrue(ivorian.channels.allSatisfy { $0.logoPNG == nil })
+        let choices = MobileMoneyForm.choices(channels: ivorian.channels, country: "CI", config: Fixtures.config("sdk-config-ci-wallets"),
+                                              language: .en, amount: 10000)
+        XCTAssertFalse(choices.isEmpty)
+        XCTAssertTrue(choices.allSatisfy { $0.drawableLogoURL == nil }, "SVG logos only: the brand badges")
+        XCTAssertEqual(choices.first { $0.id == "mtn" }?.logoURL, "https://assets.wajub.com/img/channels/ci-mtn.svg", "as in 1.0.0")
+
+        XCTAssertEqual(ChannelLogo.drawable(logo: "https://cdn.example/a.svg", png: "https://cdn.example/a.png"), "https://cdn.example/a.png")
+        XCTAssertNil(ChannelLogo.drawable(logo: "https://cdn.example/a.SVG?v=2", png: nil))
+        XCTAssertEqual(ChannelLogo.drawable(logo: "https://cdn.example/a.png", png: nil), "https://cdn.example/a.png")
+        XCTAssertNil(ChannelLogo.drawable(logo: "http://cdn.example/a.png", png: nil), "https only")
+        XCTAssertNil(ChannelLogo.drawable(logo: nil, png: nil))
     }
 
     /// CH-05 disables channels out of their limits
@@ -101,7 +155,7 @@ final class ChannelTests: XCTestCase {
         XCTAssertEqual(form.selection, "moov", "a disabled operator cannot be picked")
         form.setPhone("0501020304")
         XCTAssertEqual(form.selection, "moov", "nor preselected by detection")
-        XCTAssertNil(form.validate(sandbox: false).error, "never a mismatch naming an operator that cannot be picked")
+        XCTAssertNil(form.validate(), "never a mismatch naming an operator that cannot be picked")
 
         // Every operator out of its limits: they are all listed with their limits, and Pay is disabled.
         let allOut = try SessionResponse(json: Fixtures.body("session-cm-aggregate").setting(["transaction", "amount_total"], to: 600_000))

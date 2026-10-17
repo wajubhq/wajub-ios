@@ -1,0 +1,101 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/process",
+    "body": {
+      "channel": "bf.orange",
+      "data": {
+        "phone": "+22670000000",
+        "country": "BF",
+        "otp": "12",
+        "_client": {
+          "timezone": "Africa/Douala",
+          "language": "fr-CM",
+          "screen": "1080x2400",
+          "color_depth": 24,
+          "fingerprint": "9f2c4e1a7b3d5f60",
+          "client": "wajub-flutter/1.6.0 (android 15)"
+        }
+      }
+    }
+  },
+  "http_status": 202,
+  "body": {
+    "code": 202,
+    "status": "Accepted",
+    "message": "This code is not valid. Check it and enter it again.",
+    "action": "payer_otp",
+    "error_code": "invalid_otp",
+    "transaction": {
+      "id": "trx_test_PVrU8x2kQ1mNa7Lb3cDe",
+      "reference": "ORD-2207",
+      "trxref": "ORD-2207",
+      "amount": 1000,
+      "amount_total": 1000,
+      "amount_collected": 0,
+      "amount_paid": 0,
+      "remaining_amount": 1000,
+      "currency": "XOF",
+      "bearer": "merchant",
+      "fee": null,
+      "status": "pending",
+      "status_label": "Pending",
+      "error_code": null,
+      "sandbox": true,
+      "description": "Order #2207",
+      "customer": null,
+      "receipt_url": null,
+      "expires_at": null,
+      "created_at": "2026-10-15T09:30:00+00:00",
+      "updated_at": "2026-10-15T09:30:00+00:00",
+      "terminal_at": null
+    },
+    "payer_otp": {
+      "channel": "bf.orange",
+      "ussd_code": "*144*4*6#",
+      "otp_length": 6,
+      "amount": "1000",
+      "currency": "XOF",
+      "steps": {
+        "fr": [
+          {
+            "text": "Sur le téléphone du compte Orange Money, composez *144*4*6#.",
+            "template": "Sur le téléphone du compte Orange Money, composez {ussd_code}."
+          },
+          {
+            "text": "Saisissez le montant exact : 1000 XOF.",
+            "template": "Saisissez le montant exact : {amount} {currency}."
+          },
+          {
+            "text": "Saisissez votre code PIN Orange Money.",
+            "template": "Saisissez votre code PIN Orange Money."
+          },
+          {
+            "text": "Vous recevez par SMS un code à usage unique : saisissez-le ci-dessous.",
+            "template": "Vous recevez par SMS un code à usage unique : saisissez-le ci-dessous."
+          }
+        ],
+        "en": [
+          {
+            "text": "On the phone of the Orange Money account, dial *144*4*6#.",
+            "template": "On the phone of the Orange Money account, dial {ussd_code}."
+          },
+          {
+            "text": "Enter the exact amount: 1000 XOF.",
+            "template": "Enter the exact amount: {amount} {currency}."
+          },
+          {
+            "text": "Enter your Orange Money PIN.",
+            "template": "Enter your Orange Money PIN."
+          },
+          {
+            "text": "You receive a one-time code by SMS: enter it below.",
+            "template": "You receive a one-time code by SMS: enter it below."
+          }
+        ]
+      },
+      "reason": "invalid",
+      "attempts_remaining": 3
+    }
+  }
+}

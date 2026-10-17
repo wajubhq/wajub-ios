@@ -7,7 +7,7 @@ extension CheckoutController {
     /// Verifies a step: `code` (OTP), `pin`, `phone`, `birthday` (`YYYY-MM-DD`), or `address`, `city`, `state`, `zip_code`.
     public func submitStep(_ fields: [String: String]) {
         guard result == nil, !isWorking, case .step(var step) = screen else { return }
-        let fields = fields.mapValues { $0.trimmingCharacters(in: .whitespaces) }
+        let fields = fields.mapValues { Digits.ascii($0).trimmingCharacters(in: .whitespaces) }
         let errors = CheckoutController.validateStep(step.kind, fields: fields, language: language)
         guard errors.isEmpty else {
             fieldErrors = errors
@@ -52,6 +52,10 @@ extension CheckoutController {
                 if let transaction { lastTransaction = transaction }
                 if let transaction, transaction.status.isPaid {
                     succeed(transaction)
+                } else if answer.body?["action"]?.nonEmptyString != nil {
+                    // The provider chains another step (a birthday then an OTP, a PIN then a bank page):
+                    // the answer is followed as a payment answer.
+                    handlePaymentAnswer(answer, mobileMoney: attempt?.family == "mobile_money", clientSession: false)
                 } else if transaction?.status == .failed {
                     attempt?.inFlight = false
                     fail(.catalogue(WajubError.Code.paymentFailed, language))
@@ -112,7 +116,7 @@ extension CheckoutController {
         func digits(_ key: String, _ range: ClosedRange<Int>) -> [String: WajubError] {
             let value = fields[key] ?? ""
             if value.isEmpty { return [key: .catalogue(WajubError.Code.fieldRequired, language)] }
-            guard value.allSatisfy(\.isNumber), range.contains(value.count) else {
+            guard Digits.isASCIIDigits(value), range.contains(value.count) else {
                 return [key: .catalogue(WajubError.Code.validationError, language)]
             }
             return [:]
@@ -129,7 +133,7 @@ extension CheckoutController {
             if value.isEmpty { return ["birthday": .catalogue(WajubError.Code.fieldRequired, language)] }
             let parts = value.split(separator: "-")
             let valid = parts.count == 3 && parts[0].count == 4 && parts[1].count == 2 && parts[2].count == 2
-                && parts.allSatisfy { $0.allSatisfy(\.isNumber) }
+                && parts.allSatisfy { Digits.isASCIIDigits($0) }
             return valid ? [:] : ["birthday": .catalogue(WajubError.Code.validationError, language)]
         case .address:
             var errors: [String: WajubError] = [:]
@@ -161,8 +165,8 @@ extension CheckoutController {
 
     public func submitThreeDSCode(_ code: String) {
         guard result == nil, !isWorking, case .threeDS(var challenge) = screen else { return }
-        let code = code.trimmingCharacters(in: .whitespaces)
-        guard code.allSatisfy(\.isNumber), (4...8).contains(code.count) else {
+        let code = Digits.ascii(code).trimmingCharacters(in: .whitespaces)
+        guard Digits.isASCIIDigits(code), (4...8).contains(code.count) else {
             fieldErrors = ["code": .catalogue(code.isEmpty ? WajubError.Code.fieldRequired : WajubError.Code.invalidCode, language)]
             update()
             return

@@ -1,0 +1,54 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/pay/birthday/verify",
+    "body": {
+      "birthday_id": "prc_7hQm2LxV9pR4sT1wYb3N",
+      "birthday": "1990-01-31"
+    }
+  },
+  "http_status": 200,
+  "body": {
+    "status": "success",
+    "transaction": {
+      "id": "trx_PVrU8x2kQ1mNa7Lb3cDe",
+      "reference": "ORD-5521",
+      "trxref": "ORD-5521",
+      "amount": 5000,
+      "amount_total": 5000,
+      "amount_collected": 5000,
+      "amount_paid": 0,
+      "remaining_amount": 0,
+      "currency": "NGN",
+      "bearer": "merchant",
+      "fee": null,
+      "status": "processing",
+      "status_label": "Processing",
+      "error_code": null,
+      "sandbox": false,
+      "description": "Order #5521",
+      "customer": null,
+      "receipt_url": null,
+      "expires_at": null,
+      "created_at": "2026-10-15T09:30:00+00:00",
+      "updated_at": "2026-10-15T09:30:00+00:00",
+      "terminal_at": null,
+      "processing_context": {
+        "channel_slug": "card",
+        "is_mobile_money": false,
+        "is_ussd": false,
+        "is_bank_transfer": false,
+        "payer_instruction": "Please enter the OTP sent to 080******78",
+        "bank_transfer_account": null,
+        "action_url": null,
+        "three_ds_id": null,
+        "three_ds_method": null,
+        "masked_email": null,
+        "three_ds_timeout": null
+      }
+    },
+    "action": "confirm_otp",
+    "otp_id": "prc_7hQm2LxV9pR4sT1wYb3N",
+    "otp_masked_contact": "080******78"
+  }
+}

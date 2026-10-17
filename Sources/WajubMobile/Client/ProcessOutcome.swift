@@ -1,6 +1,6 @@
 import Foundation
 
-/// What a `202` without anything for the payer to do is waiting for.
+/// What a payment under way is waiting for.
 public enum ProcessingKind: String, Sendable {
     /// A push was sent to the payer's phone.
     case approval
@@ -13,14 +13,17 @@ public enum ProcessingKind: String, Sendable {
 /// A step the payer must take before the payment can finish.
 public struct RequiredAction: Equatable, Sendable {
     public var action: ProcessAction
-    /// `confirm_url`, or `client_session.hosted_url`.
+    /// The page to open, when the step is a page.
     public var url: String?
-    /// `otp_id`, `pin_id`, `phone_id`, `birthday_id`, `address_id` or `three_ds_id`.
+    /// The step's id, for `WajubSession.verify(_:id:fields:)` or the 3-D Secure calls.
     public var stepId: String?
-    /// `otp_masked_contact`, a `*_instruction`, or `masked_email`.
+    /// Where the code was sent, or the step's instruction.
     public var hint: String?
     public var clientSession: ClientSession?
     public var transaction: SessionTransaction?
+    /// With `.payerOTP`: how the payer gets the code their operator asks for. Nothing was charged: pay
+    /// again with the code the payer generated, as `otp` in `data`.
+    public var payerOTP: PayerOTPInstructions? = nil
 }
 
 /// The mapping of one payment answer, for hosts that draw their own UI (`WajubSession.process(…)`).
@@ -49,6 +52,8 @@ public enum ProcessOutcome: Equatable, Sendable {
         case .clientSession(let session, let response):
             self = .requiresAction(RequiredAction(action: .clientSession, url: session.hostedURL, clientSession: session,
                                                   transaction: response.transaction))
+        case .payerOTP(let instructions, let response):
+            self = .requiresAction(RequiredAction(action: .payerOTP, transaction: response.transaction, payerOTP: instructions))
         case .unsupportedAction(let response):
             self = .failed(error: .catalogue(WajubError.Code.unsupportedAction, language), transaction: response.transaction)
         case .unconfirmed:
@@ -79,6 +84,19 @@ struct ConfirmStep: Equatable, Sendable {
     var kind: ConfirmStepKind
     var id: String
     var hint: String?
+
+    /// Where the OTP was sent: the masked number or address only (two comma-separated), `nil` when the
+    /// provider names none. An older answer could carry the provider's whole sentence ("Please enter
+    /// the OTP sent to 080******78"): only its contact is kept, never the sentence.
+    static func otpContact(_ raw: String?) -> String? {
+        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+        let parts = raw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        if parts.allSatisfy({ !$0.isEmpty && !$0.contains(" ") }) { return raw }
+        let contacts = raw.split(whereSeparator: { $0 == " " || $0 == "," })
+            .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: ".:;!?()")) }
+            .filter { token in token.contains("*") || token.contains("@") || token.filter(\.isNumber).count >= 4 }
+        return contacts.isEmpty ? nil : contacts.joined(separator: ", ")
+    }
 }
 
 /// How a payment answer is handled (README §9): decided on the HTTP status, `action` and
@@ -91,6 +109,8 @@ enum PaymentAnswer: Sendable {
     case threeDSCode(ThreeDSChallenge, ProcessResponse)
     case step(ConfirmStep, ProcessResponse)
     case clientSession(ClientSession, ProcessResponse)
+    /// `payer_otp`: the payer generates a code in the operator's menu; nothing was charged.
+    case payerOTP(PayerOTPInstructions, ProcessResponse)
     case unsupportedAction(ProcessResponse)
     /// A 2xx with neither `action` nor `transaction`.
     case unconfirmed(ProcessResponse)
@@ -127,16 +147,20 @@ enum PaymentAnswer: Sendable {
                 return .unsupportedAction(response)
             }
             return .clientSession(session, response)
+        case .payerOTP:
+            guard let instructions = response.payerOTP else { return .unsupportedAction(response) }
+            return .payerOTP(instructions, response)
         default:
             guard let kind = ConfirmStepKind(action: action) else { return .unsupportedAction(response) }
             let body = answer.body ?? .null
             guard let id = body[kind.idKey]?.nonEmptyString else { return .unsupportedAction(response) }
-            return .step(ConfirmStep(kind: kind, id: id, hint: body[kind.hintKey]?.nonEmptyString), response)
+            let hint = body[kind.hintKey]?.nonEmptyString
+            return .step(ConfirmStep(kind: kind, id: id, hint: kind == .otp ? ConfirmStep.otpContact(hint) : hint), response)
         }
     }
 }
 
-/// An Altcha solution, sent as `data.altcha` / `altcha`.
+/// A solved security check of the payment.
 public struct AltchaSolution: Equatable, Sendable {
     public var algorithm: String
     public var challenge: String
@@ -150,8 +174,7 @@ public struct AltchaSolution: Equatable, Sendable {
     }
 }
 
-/// Solves Altcha proof-of-work challenges: the integer `n` in `[0, maxnumber]` with
-/// `lowercase_hex(SHA-256(salt + decimal(n))) == challenge`.
+/// Solves the payment's security check (`SessionResponse.altcha`).
 public enum AltchaSolver {
     public static func solve(_ challenge: AltchaChallenge) -> AltchaSolution? {
         let algorithm = challenge.algorithm.uppercased().replacingOccurrences(of: "-", with: "")

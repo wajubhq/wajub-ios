@@ -56,14 +56,17 @@ struct ApprovalView: View {
     let approval: ApprovalScreen
 
     var body: some View {
-        let strings = model.strings
+        // After the payer's own code: no phone line, and nothing left to approve on the phone.
+        let texts = approval.texts(model.strings, amount: model.controller.formattedAmount)
         VStack(spacing: style.gapRow) {
-            OutcomeHeader(symbol: "iphone.radiowaves.left.and.right", tint: style.primary, title: strings.approvalTitle,
-                          message: strings.approvalBody(amount: model.controller.formattedAmount, phone: approval.phone), style: style)
+            OutcomeHeader(symbol: "iphone.radiowaves.left.and.right", tint: style.primary, title: texts.title,
+                          message: texts.phoneLine, style: style)
             if let instruction = approval.instruction {
                 InstructionView(instruction: instruction, model: model, style: style)
             }
-            WaitingRow(text: strings.waitingForApproval, style: style)
+            if let waiting = texts.waiting {
+                WaitingRow(text: waiting, style: style)
+            }
         }
     }
 }
@@ -112,6 +115,10 @@ struct StepView: View {
                 .foregroundColor(style.text)
             if let hint = step.hint {
                 Text(step.kind == .otp ? strings.codeSentTo(hint) : hint)
+                    .font(style.hint)
+                    .foregroundColor(style.textSecondary)
+            } else if step.kind == .otp {
+                Text(strings.codeSent)
                     .font(style.hint)
                     .foregroundColor(style.textSecondary)
             }

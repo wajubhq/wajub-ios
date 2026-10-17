@@ -20,13 +20,21 @@ public enum WajubLanguage: String, Sendable, CaseIterable {
     }
 }
 
-/// Fills `{name}` placeholders.
+/// Fills `{name}` placeholders. A sentence whose value is missing is left out, never shown with its
+/// placeholder ("Incorrect code. {n} attempts left." without `n`: "Incorrect code.").
 func fill(_ template: String, _ values: [String: String]) -> String {
     var text = template
     for (key, value) in values {
         text = text.replacingOccurrences(of: "{\(key)}", with: value)
     }
-    return text
+    guard text.contains("{") else { return text }
+    let kept = text.components(separatedBy: ". ").filter { !$0.contains("{") }
+    guard !kept.isEmpty else {
+        return text.replacingOccurrences(of: "\\s*\\{[^}]*\\}", with: "", options: .regularExpression)
+    }
+    var result = kept.joined(separator: ". ")
+    if let last = result.last, !".!?".contains(last) { result += "." }
+    return result
 }
 
 /// Every text the sheet shows, in English and French.
@@ -41,7 +49,7 @@ public struct WajubStrings: Sendable {
         language == .fr ? fr : en
     }
 
-    /// The catalogue's text for an error code (errors.md §3), placeholders left as they are.
+    /// The sheet's text for an error code, placeholders left as they are.
     public func errorMessage(_ code: String) -> String {
         (ErrorCatalogue.entries[code] ?? ErrorCatalogue.entries[WajubError.Code.requestFailed]!).message(language)
     }
@@ -150,6 +158,8 @@ public struct WajubStrings: Sendable {
         }
     }
     public func codeSentTo(_ contact: String) -> String { fill(t("Sent to {contact}", "Envoyé au {contact}"), ["contact": contact]) }
+    /// The OTP screen's line when the provider does not say where the code went.
+    public var codeSent: String { t("A code was sent to you.", "Un code vous a été envoyé.") }
     public var code: String { t("Code", "Code") }
     public var pin: String { t("PIN", "Code PIN") }
     public var birthday: String { t("Date of birth", "Date de naissance") }
@@ -176,4 +186,62 @@ public struct WajubStrings: Sendable {
     public var cancelledTitle: String { t("Payment cancelled", "Paiement annulé") }
     public var tryAgain: String { t("Try again", "Réessayer") }
     public func tryAgainIn(_ seconds: Int) -> String { fill(t("Try again in {seconds} s", "Réessayer dans {seconds} s"), ["seconds": String(seconds)]) }
+
+    // The code the payer generates in the operator's menu
+    public var payerOTPTitle: String { t("Generate your payment code", "Générez votre code de paiement") }
+    public var payerOTPDescription: String {
+        t("Before you pay, your operator asks for a code you generate yourself from its menu, for the exact amount of the payment.",
+          "Avant de payer, votre opérateur demande un code que vous générez vous-même depuis son menu, pour le montant exact du paiement.")
+    }
+    public var payerOTPDial: String { t("Code to dial", "Code à composer") }
+    public var copy: String { t("Copy", "Copier") }
+    public var copied: String { t("Copied", "Copié") }
+    public var payerOTPAmount: String { t("Exact amount to enter", "Montant exact à saisir") }
+    public var payerOTPStepsTitle: String { t("How to get your code", "Comment obtenir votre code") }
+    /// The steps shown when the operator gives none; `{amount}` is the exact amount.
+    public var payerOTPGenericSteps: [String] {
+        [t("Open your operator's Mobile Money menu (USSD code or app).",
+           "Ouvrez le menu Mobile Money de votre opérateur (code USSD ou application)."),
+         t("Generate a payment code for the exact amount: {amount}.",
+           "Générez un code de paiement pour le montant exact : {amount}."),
+         t("Enter the code you received below.", "Saisissez ci-dessous le code que vous avez reçu.")]
+    }
+    public var payerOTPCodeLabel: String { t("Payment code", "Code de paiement") }
+    public var payerOTPSubmit: String { t("Confirm payment", "Valider le paiement") }
+    public var payerOTPChangeMethod: String { t("Use another payment method", "Changer de moyen de paiement") }
+    public func payerOTPSandboxHint(_ code: String) -> String {
+        fill(t("Test mode: enter the code {code}. Any other code is refused.",
+               "Mode test : saisissez le code {code}. Tout autre code est refusé."), ["code": code])
+    }
+    public var payerOTPApprovalMessage: String {
+        t("Code received. Your operator is processing the payment, this can take a moment.",
+          "Code reçu. Votre opérateur traite le paiement, cela peut prendre quelques instants.")
+    }
+    /// The Mobile Money form's line when the chosen operator will ask for the payer's code.
+    public func payerOTPFormHint(ussdCode: String?) -> String {
+        guard let ussdCode else {
+            return t("For this payment, you will generate a code from your operator's menu: the next step guides you.",
+                     "Pour ce paiement, vous générerez un code depuis le menu de votre opérateur : l'étape suivante vous guide.")
+        }
+        return fill(t("For this payment, you will generate a code by dialing {ussd_code}: the next step guides you.",
+                      "Pour ce paiement, vous générerez un code en composant {ussd_code} : l'étape suivante vous guide."),
+                    ["ussd_code": ussdCode])
+    }
+    public func payerOTPAttemptsRemaining(_ count: Int) -> String {
+        switch count {
+        case ...0: return t("No tries left.", "Plus aucun essai possible.")
+        case 1: return t("1 try left.", "Il vous reste 1 essai.")
+        default: return fill(t("{count} tries left.", "Il vous reste {count} essais."), ["count": String(count)])
+        }
+    }
+    /// The code's expected length: exactly `length` digits, else `min` to `max`.
+    public func payerOTPLength(_ length: Int?, min: Int = 4, max: Int = 8) -> String {
+        if let length { return fill(t("The code must have {length} digits.", "Le code doit comporter {length} chiffres."), ["length": String(length)]) }
+        return fill(t("The code must have between {min} and {max} digits.", "Le code doit comporter entre {min} et {max} chiffres."),
+                    ["min": String(min), "max": String(max)])
+    }
+    public var payerOTPRefused: String {
+        t("Your operator did not accept this code. Generate a new one and try again.",
+          "Votre opérateur n'a pas accepté ce code. Générez-en un nouveau et réessayez.")
+    }
 }
